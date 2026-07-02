@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic TW Safe Update check
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=3h
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# tw-safe-update: interactive terminal wrapper around the real `zypper dup`.
+# Launched by the plasmoid in konsole; the real update intentionally asks
+# for your password (only the read-only dry-run checks are passwordless).
+set -u
+
+BOLD=$'\e[1m'; GREEN=$'\e[32m'; RED=$'\e[31m'; RESET=$'\e[0m'
+
+echo "${BOLD}════ TW Safe Update — distribution upgrade ════${RESET}"
+echo "Running the real ${BOLD}zypper dist-upgrade${RESET} now."
+echo "You will be asked for your password — review the summary before confirming."
+echo
+
+sudo /usr/bin/zypper dist-upgrade
+rc=$?
+
+echo
+if [ $rc -eq 0 ]; then
+    echo "${GREEN}${BOLD}Update finished successfully.${RESET}"
+elif [ $rc -eq 102 ]; then
+    echo "${GREEN}${BOLD}Update finished — a REBOOT is required.${RESET}"
+else
+    echo "${RED}${BOLD}zypper exited with code $rc${RESET}"
+fi
+
+echo
+echo "Re-checking system status…"
+"$HOME/.local/bin/twsu-check" --pretty --no-refresh || true
+
+echo
+read -rp "Press Enter to close this window…"
+exit $rc

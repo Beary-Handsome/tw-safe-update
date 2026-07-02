@@ -1,0 +1,37 @@
+Warning: You are about to do a distribution upgrade with all enabled repositories. Make sure these repositories are compatible before you continue. See 'man zypper' for more information about this command.
+Loading repository data...
+Reading installed packages...
+Computing distribution upgrade...
+
+The following 4 NEW packages are going to be installed:
+  kernel-default-6.15.4-1.1 libplacebo349 libupb17_1 python313-annotated-types
+
+The following 213 packages are going to be upgraded:
+  Mesa Mesa-dri Mesa-gallium Mesa-libEGL1 Mesa-libGL1 Mesa-libglapi0
+  NetworkManager NetworkManager-branding-openSUSE aaa_base alsa alsa-utils
+  bash bash-completion coreutils dbus-1 dbus-1-common dolphin dolphin-part
+  ffmpeg-7 firefox firefox-branding-openSUSE flatpak fonts-config glib2-tools
+  glibc glibc-gconv-modules-extra glibc-locale glibc-locale-base gstreamer
+  gstreamer-plugins-bad gstreamer-plugins-base gstreamer-plugins-good
+  kernel-firmware-amdgpu konsole kwin6 libavcodec62 libavformat62 libavutil60
+  plasma6-desktop plasma6-workspace systemd systemd-sysvcompat vlc vlc-codecs
+  zypper
+
+The following product is going to be upgraded:
+  openSUSE Tumbleweed  20260625-0 -> 20260630-0
+
+The following 6 packages require a system reboot:
+  glibc kernel-default kernel-firmware-amdgpu systemd dbus-1 Mesa
+
+213 packages to upgrade, 4 new.
+Package download size:   316.1 MiB
+
+Package install size change:
+              |      598.2 MiB  required by packages that will be installed
+   12.4 MiB   |  -   585.8 MiB  released by packages that will be removed
+
+Backend:  classic_rpmtrans
+Overall download size: 316.1 MiB. Already cached: 0 B. After the operation, additional 12.4 MiB will be used.
+
+Note: System reboot required.
+Continue? [y/n/v/...? shows all options] (y): y

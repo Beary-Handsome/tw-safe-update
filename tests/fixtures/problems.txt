@@ -1,0 +1,16 @@
+Loading repository data...
+Reading installed packages...
+Computing distribution upgrade...
+2 Problems:
+Problem: nothing provides 'libavcodec.so.62(LIBAVCODEC_62)(64bit)' needed by the to be installed mpv-0.40.0-1699.2.x86_64
+Problem: the to be installed vlc-codecs-3.0.21-3.5.x86_64 requires 'libavutil.so.60()(64bit)', but this requirement cannot be provided
+
+Problem: nothing provides 'libavcodec.so.62(LIBAVCODEC_62)(64bit)' needed by the to be installed mpv-0.40.0-1699.2.x86_64
+ Solution 1: do not install mpv-0.40.0-1699.2.x86_64
+ Solution 2: break mpv-0.40.0-1699.2.x86_64 by ignoring some of its dependencies
+
+Problem: the to be installed vlc-codecs-3.0.21-3.5.x86_64 requires 'libavutil.so.60()(64bit)', but this requirement cannot be provided
+ Solution 1: do not install vlc-codecs-3.0.21-3.5.x86_64
+ Solution 2: break vlc-codecs-3.0.21-3.5.x86_64 by ignoring some of its dependencies
+
+Choose from above solutions by number or cancel [1/2/c/d/?] (c): c

@@ -1,0 +1,16 @@
+Loading repository data...
+Reading installed packages...
+Computing distribution upgrade...
+
+The following 2 packages are going to be downgraded:
+  libfoo2 somepackage
+
+The following 3 packages are going to be REMOVED:
+  discontinued-tool libbar-old python313-oldmodule
+
+The following 98 packages are going to be upgraded:
+  bash coreutils glibc zypper
+
+98 packages to upgrade, 2 to downgrade, 3 to remove.
+Overall download size: 150.0 MiB. Already cached: 0 B. After the operation, 40.0 MiB will be freed.
+Continue? [y/n/v/...? shows all options] (y): y

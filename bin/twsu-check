@@ -1,0 +1,708 @@
+#!/usr/bin/env python3
+"""tw-safe-update checker.
+
+Refreshes repo metadata, runs `zypper dup --dry-run` (both via a narrow
+NOPASSWD sudoers rule installed by install.sh), analyzes the proposed
+transaction for the classic Tumbleweed breakage signals, and emits a JSON
+verdict for the plasmoid (or a human report with --pretty).
+
+Verdicts:
+  UP_TO_DATE  nothing to do
+  SAFE        clean resolution: no problems, no vendor changes, no
+              downgrades, no removals, nothing held back
+  CAUTION     resolvable, but something needs a human look (held-back
+              Packman packages, downgrades, non-critical removals, ...)
+  UNSAFE      dependency problems, packages leaving the Packman vendor
+              (codec crippling), or critical packages being removed
+  ERROR       could not determine (no sudo rule, zypp locked, zypper failed)
+
+Exit code is 0 whenever a verdict was produced (even UNSAFE/ERROR).
+"""
+
+import argparse
+import configparser
+import glob
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.request
+
+VERSION = "1.0.0"
+ZYPPER = "/usr/bin/zypper"
+# These argv lists MUST match /etc/sudoers.d/50-tw-safe-update exactly.
+REFRESH_CMD = ["sudo", "-n", ZYPPER, "--non-interactive", "refresh"]
+DUP_CMD = ["sudo", "-n", ZYPPER, "--non-interactive", "--no-refresh",
+           "dist-upgrade", "--dry-run"]
+
+CACHE_DIR = os.path.expanduser("~/.cache/tw-safe-update")
+STATUS_FILE = os.path.join(CACHE_DIR, "status.json")
+RAW_FILE = os.path.join(CACHE_DIR, "last-dup-output.txt")
+
+MEDIA_URL = "https://download.opensuse.org/tumbleweed/repo/oss/media.1/media"
+
+# Packages whose REMOVAL almost certainly means breakage. Each alternative is a
+# full package (base) name; the trailing "(?:-\d|$)" anchors it so a critical
+# name matches itself and its versioned form (e.g. "kernel-default-6.15") but
+# NOT unrelated sub-packages that merely share the prefix ("kernel-default-devel",
+# "grub2-branding", "systemd-experimental", "pipewire-aptx", ...).
+CRITICAL_RE = re.compile(
+    r"^(?:kernel-default|kernel-firmware|kernel-default-base|dracut|Mesa"
+    r"|libdrm2?|vulkan|libvulkan1?|xorg-x11-server|xwayland|plasma6-workspace"
+    r"|plasma6-desktop|kwin|systemd|glibc|zypper|libzypp|rpm|grub2|shim"
+    r"|NetworkManager|pipewire|wireplumber|sddm|ffmpeg|libavcodec|libavformat"
+    r"|libavutil|libpostproc|libswresample|libswscale|gstreamer|vlc|libvlc"
+    r"|mpv|libx264|libx265|libva2?|libvdpau|openh264)(?:-\d|$)",
+    re.IGNORECASE)
+
+MULTIMEDIA_RE = re.compile(
+    r"(ffmpeg|libav|gstreamer|vlc|mpv|codec|x264|x265|libva|vdpau|pipewire"
+    r"|libheif|opus|vpx|dav1d|aom)", re.IGNORECASE)
+
+PACKMAN_RE = re.compile(r"(packman|links2linux)", re.IGNORECASE)
+
+HDR_PATTERNS = [
+    (re.compile(r"^The following (?:(\d+) )?NEW packages? (?:is|are) going to be installed:"), "new"),
+    (re.compile(r"^The following (?:(\d+) )?packages? (?:is|are) going to be upgraded:"), "upgrade"),
+    (re.compile(r"^The following (?:(\d+) )?packages? (?:is|are) going to be downgraded:"), "downgrade"),
+    (re.compile(r"^The following (?:(\d+) )?packages? (?:is|are) going to be reinstalled:"), "reinstall"),
+    (re.compile(r"^The following (?:(\d+) )?packages? (?:is|are) going to be REMOVED:"), "remove"),
+    (re.compile(r"^The following (?:(\d+) )?packages? (?:is|are) going to change vendor:"), "vendor_change"),
+    (re.compile(r"^The following (?:(\d+) )?packages? (?:is|are) going to change architecture:"), "arch_change"),
+    (re.compile(r"^The following (?:(\d+) )?package updates? will NOT be installed:"), "held_back"),
+    (re.compile(r"^The following products? (?:is|are) going to be upgraded:"), "product"),
+    (re.compile(r"^The following (?:(\d+) )?applications? (?:is|are) going to be REMOVED:"), "app_remove"),
+    (re.compile(r"^The following (?:(\d+) )?packages? require a system reboot:"), "reboot"),
+]
+
+PROBLEM_RE = re.compile(r"^Problem(?: \d+)?: (.+)$")
+SOLUTION_RE = re.compile(r"^ +Solution \d+: .+$")
+SIZE_RE = re.compile(r"(?:Overall|Package) download size:\s*([\d.,]+\s*[KMGTP]?i?B)")
+
+
+def parse_dup_output(text):
+    """Parse LANG=C `zypper dup --dry-run` output into structured sections."""
+    sections = {}
+    declared = {}   # counts stated in the section headers (authoritative)
+    problems = {}   # text -> [solutions]  (dict keeps order, dedupes)
+    nothing = False
+    download_size = None
+    current = None
+    last_problem = None
+
+    for raw in text.splitlines():
+        line = raw.rstrip("\n")
+
+        m = PROBLEM_RE.match(line)
+        if m:
+            key = m.group(1).strip()
+            problems.setdefault(key, [])
+            last_problem = key
+            current = None
+            continue
+        if last_problem and SOLUTION_RE.match(line):
+            problems[last_problem].append(line.strip())
+            continue
+        # continuation of the previous solution, e.g. the "replacing NAME from
+        # vendor X" line that zypper wraps onto its own indented line
+        if (last_problem and problems.get(last_problem)
+                and re.match(r"^\s{2,}\S", line)
+                and not line.lstrip().startswith(("Solution", "Problem"))):
+            problems[last_problem][-1] += " " + line.strip()
+            continue
+
+        hdr = None
+        for rx, kind in HDR_PATTERNS:
+            hm = rx.match(line)
+            if hm:
+                hdr = kind
+                groups = hm.groups()
+                declared[kind] = int(groups[0]) if groups and groups[0] else 1
+                break
+        if hdr:
+            current = hdr
+            sections.setdefault(current, [])
+            continue
+
+        if line.startswith("Nothing to do"):
+            nothing = True
+            current = None
+            continue
+
+        m = SIZE_RE.search(line)
+        if m:
+            download_size = m.group(1).strip()
+            current = None
+            continue
+
+        if current is not None:
+            if line.startswith((" ", "\t")) and line.strip():
+                entry = line.strip()
+                if "->" in entry or current in ("product",):
+                    # one entry per line ("name  oldvendor -> newvendor")
+                    sections[current].append(re.sub(r"\s+", " ", entry))
+                else:
+                    sections[current].extend(entry.split())
+            else:
+                current = None
+
+    return {
+        "sections": sections,
+        "declared_counts": declared,
+        "problems": [{"problem": k, "solutions": v} for k, v in problems.items()],
+        "nothing_to_do": nothing,
+        "download_size": download_size,
+    }
+
+
+ARCH_ALT = "x86_64|noarch|i586|i686|aarch64|armv7hl|ppc64le|s390x"
+# Match "install NAME-VER.arch" but NOT "do not install …" (a rejection, not a
+# proposed install). The negative lookbehind keeps rejected packages out of the
+# collision candidate list.
+SOL_INSTALL_RE = re.compile(r"(?<!do not )install (\S+\.(?:%s))" % ARCH_ALT)
+# Collision lookups are read-only metadata queries; keep them from blocking the
+# whole check for the full 15-min default if the zypp DB is momentarily locked.
+COLLISION_TIMEOUT = 45
+MAX_COLLISION_CANDIDATES = 15
+INFO_FIELD_RE = re.compile(r"^(Version|Vendor|Upstream URL|Summary)\s*:\s*(.*)$")
+
+
+def _split_nevra(s):
+    """'polaris-10.2.0-1.1.x86_64' -> ('polaris', '10.2.0')."""
+    s = re.sub(r"\.(?:%s)$" % ARCH_ALT, "", s)
+    parts = s.rsplit("-", 2)
+    if len(parts) >= 2:
+        return parts[0], parts[1]
+    return s, None
+
+
+def _norm_url(u):
+    u = (u or "").strip().lower()
+    if u in ("", "(none)", "none"):
+        return ""
+    u = re.sub(r"^https?://", "", u)
+    u = re.sub(r"^www\.", "", u)
+    return re.sub(r"\.git$", "", u.rstrip("/"))
+
+
+def _info_fields(text):
+    d = {}
+    for line in text.splitlines():
+        m = INFO_FIELD_RE.match(line)
+        if m:
+            d[m.group(1)] = m.group(2).strip()
+    return d
+
+
+def installed_meta(name):
+    """(version, vendor, url, summary) for an installed rpm, or None."""
+    rc, out, _ = run(["/usr/bin/rpm", "-q", "--qf",
+                      "%{VERSION}\x1f%{VENDOR}\x1f%{URL}\x1f%{SUMMARY}", name],
+                     timeout=COLLISION_TIMEOUT)
+    if rc != 0 or "\x1f" not in out:
+        return None
+    parts = (out.split("\x1f") + ["", "", "", ""])[:4]
+    return {"version": parts[0], "vendor": parts[1], "url": parts[2], "summary": parts[3]}
+
+
+def candidate_version(name):
+    """Highest not-installed version of `name` from the repos, release stripped.
+
+    The `zypper se -s` status column is 'i'/'i+' for installed rows and 'v'/''
+    for other available versions; we skip installed rows and keep the last
+    available one (zypper lists versions in ascending order)."""
+    rc, out, _ = run([ZYPPER, "-q", "--no-refresh", "se", "-s",
+                      "--match-exact", "-t", "package", name],
+                     timeout=COLLISION_TIMEOUT)
+    best = None
+    for line in out.splitlines():
+        cols = [c.strip() for c in line.split("|")]
+        if len(cols) >= 4 and cols[1] == name and not cols[0].lower().startswith("i"):
+            best = cols[3]
+    return best.rsplit("-", 1)[0] if best else None
+
+
+def candidate_meta(name, ver):
+    """(version, vendor, url, summary) for a specific repo version, or None."""
+    if not ver:
+        return None
+    rc, out, _ = run([ZYPPER, "-q", "--no-refresh", "info", "%s-%s" % (name, ver)],
+                     timeout=COLLISION_TIMEOUT)
+    f = _info_fields(out)
+    if not f:
+        return None
+    return {"version": f.get("Version", ver), "vendor": f.get("Vendor", ""),
+            "url": f.get("Upstream URL", ""), "summary": f.get("Summary", "")}
+
+
+def collision_for(name, cand_ver=None):
+    """Compare an installed package with the repo candidate that would replace
+    it. Returns a dict describing whether they are the SAME upstream project
+    (safe 'adoption') or DIFFERENT projects sharing a name (dangerous
+    'collision'). Returns None when `name` is not installed."""
+    inst = installed_meta(name)
+    if not inst:
+        return None
+    cand = candidate_meta(name, cand_ver or candidate_version(name))
+    if not cand:
+        return {"name": name, "installed": inst, "candidate": None,
+                "same_project": None, "risk": "unknown"}
+    iu, cu = _norm_url(inst["url"]), _norm_url(cand["url"])
+    if iu and cu:
+        same = (iu == cu)
+    elif inst["summary"] and cand["summary"]:
+        same = inst["summary"].strip().lower() == cand["summary"].strip().lower()
+    else:
+        same = None
+    risk = "collision" if same is False else ("adoption" if same else "unknown")
+    return {"name": name, "installed": inst, "candidate": cand,
+            "same_project": same, "risk": risk}
+
+
+def detect_collisions(parsed):
+    """Find same-name package replacements/vendor-changes and classify each as
+    a same-project adoption or an unrelated-project name collision."""
+    candidates = []   # (name, candidate_version_or_None)
+    for p in parsed.get("problems", []):
+        for sol in p.get("solutions", []):
+            m = SOL_INSTALL_RE.search(sol)
+            if m:
+                candidates.append(_split_nevra(m.group(1)))
+    for entry in parsed["sections"].get("vendor_change", []):
+        left = entry.split("->")[0].strip()
+        if left:
+            candidates.append((left.split()[0], None))
+    out, seen = [], set()
+    for name, ver in candidates:
+        if name in seen:
+            continue
+        seen.add(name)
+        if len(seen) > MAX_COLLISION_CANDIDATES:   # bound the subprocess work
+            break
+        c = collision_for(name, ver)
+        if c:
+            out.append(c)
+    return out
+
+
+def analyze(parsed, refresh_note=None, packman_lag_days=None, collisions=None):
+    """Turn parsed dry-run data into (verdict, reasons)."""
+    reasons = []          # list of {"severity": ..., "text": ...}
+    sec = parsed["sections"]
+    problems = parsed["problems"]
+
+    def add(severity, text):
+        reasons.append({"severity": severity, "text": text})
+
+    unsafe = False
+    caution = False
+
+    if problems:
+        unsafe = True
+        if len(problems) == 1:
+            add("unsafe", "zypper cannot resolve this update cleanly — one "
+                "dependency problem needs a manual decision (see “Dependency "
+                "problems” below). It will keep blocking every dup until you "
+                "resolve it. Common causes: a third-party/OBS/Packman package "
+                "colliding with, obsoleted by, or lagging the new snapshot.")
+        else:
+            add("unsafe", "%d dependency problems — zypper cannot resolve this "
+                "update cleanly; each needs a manual decision (see “Dependency "
+                "problems” below)." % len(problems))
+
+    # Name-collision analysis: is a same-name replacement the SAME upstream
+    # project (safe adoption) or a DIFFERENT project sharing the name (danger)?
+    for c in (collisions or []):
+        cand = c.get("candidate") or {}
+        inst = c.get("installed") or {}
+        if c["risk"] == "collision":
+            unsafe = True
+            add("unsafe",
+                "⚠ Name collision on “%s”: your installed package and the repo "
+                "package are DIFFERENT projects sharing the name — a dup could "
+                "replace yours with unrelated software (see “Name collisions” "
+                "below). Keep yours and unblock updates with: sudo zypper "
+                "addlock %s" % (c["name"], c["name"]))
+        elif c["risk"] == "adoption":
+            caution = True
+            add("caution",
+                "“%s” %s→%s changes vendor %s→%s but is the SAME upstream project "
+                "— normally a safe adoption of the official package."
+                % (c["name"], inst.get("version", ""), cand.get("version", ""),
+                   inst.get("vendor", "?"), cand.get("vendor", "?")))
+
+    for entry in sec.get("vendor_change", []):
+        parts = entry.split("->")
+        frm = parts[0] if parts else entry
+        to = parts[1] if len(parts) > 1 else ""
+        if PACKMAN_RE.search(frm) and not PACKMAN_RE.search(to):
+            unsafe = True
+            add("unsafe", "Package would LEAVE the Packman vendor (codec "
+                "functionality would be lost): %s" % entry)
+        else:
+            caution = True
+            add("caution", "Vendor change proposed: %s" % entry)
+
+    critical_removed = [p for p in sec.get("remove", []) if CRITICAL_RE.match(p)]
+    if critical_removed:
+        unsafe = True
+        add("unsafe", "Critical package(s) would be REMOVED: %s"
+            % ", ".join(sorted(critical_removed)[:15]))
+    other_removed = [p for p in sec.get("remove", []) if not CRITICAL_RE.match(p)]
+    if other_removed:
+        caution = True
+        add("caution", "%d package(s) would be removed — review the list "
+            "(renames/drops are often fine): %s%s"
+            % (len(other_removed), ", ".join(sorted(other_removed)[:10]),
+               "…" if len(other_removed) > 10 else ""))
+
+    if sec.get("downgrade"):
+        caution = True
+        add("caution", "%d package(s) would be DOWNGRADED: %s"
+            % (len(sec["downgrade"]), ", ".join(sorted(sec["downgrade"])[:10])))
+
+    held = sec.get("held_back", [])
+    if held:
+        caution = True
+        mm = [p for p in held if MULTIMEDIA_RE.search(p)]
+        if mm:
+            add("caution", "%d update(s) held back, including multimedia "
+                "packages (%s…) — Packman likely not in sync yet. Updating now "
+                "gives a partial upgrade; waiting a day is usually safer."
+                % (len(held), ", ".join(sorted(mm)[:6])))
+        else:
+            add("caution", "%d update(s) held back by vendor/priority locks: %s%s"
+                % (len(held), ", ".join(sorted(held)[:10]),
+                   "…" if len(held) > 10 else ""))
+
+    if packman_lag_days is not None and packman_lag_days > 5:
+        caution = True
+        add("caution", "Packman repo metadata is ~%d days older than the "
+            "openSUSE OSS repo — Packman may be lagging behind the snapshot."
+            % packman_lag_days)
+
+    if refresh_note:
+        caution = True
+        add("caution", refresh_note)
+
+    # Use the header-declared counts (authoritative) so this matches the summary
+    # in build_status; the captured name lists can be truncated on wrapped lines.
+    declared = parsed.get("declared_counts", {})
+    n_up = declared.get("upgrade", len(sec.get("upgrade", [])))
+    n_new = declared.get("new", len(sec.get("new", [])))
+    has_changes = bool(n_up or n_new or sec.get("reinstall")
+                       or sec.get("arch_change") or sec.get("product"))
+
+    if unsafe:
+        verdict = "UNSAFE"
+    elif caution:
+        verdict = "CAUTION"
+    elif has_changes:
+        verdict = "SAFE"
+        add("safe", "Clean resolution: %d upgrade(s), %d new, no conflicts, "
+            "no vendor changes, no downgrades, no removals." % (n_up, n_new))
+    else:
+        verdict = "UP_TO_DATE"
+
+    return verdict, reasons
+
+
+def run(cmd, timeout=900):
+    env = dict(os.environ, LANG="C", LC_ALL="C")
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True,
+                           timeout=timeout, env=env)
+        return p.returncode, p.stdout, p.stderr
+    except subprocess.TimeoutExpired:
+        return -1, "", "timeout after %ss" % timeout
+    except FileNotFoundError as e:
+        return -1, "", str(e)
+
+
+def sudo_denied(rc, stderr):
+    return rc != 0 and ("password is required" in stderr
+                        or "no tty present" in stderr
+                        or "askpass" in stderr)
+
+
+def fetch(url, timeout=10):
+    req = urllib.request.Request(url, headers={"User-Agent": "tw-safe-update/" + VERSION})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", errors="replace")
+
+
+def installed_snapshot():
+    try:
+        with open("/etc/os-release") as f:
+            m = re.search(r'^VERSION_ID="?(\d+)"?', f.read(), re.MULTILINE)
+            return m.group(1) if m else None
+    except OSError:
+        return None
+
+
+def latest_snapshot():
+    try:
+        m = re.search(r"openSUSE-(\d{8,})", fetch(MEDIA_URL))
+        return m.group(1) if m else None
+    except Exception:
+        return None
+
+
+def repo_baseurls():
+    """alias -> baseurl for enabled repos, read from /etc/zypp/repos.d."""
+    repos = {}
+    for path in glob.glob("/etc/zypp/repos.d/*.repo"):
+        cp = configparser.ConfigParser(strict=False, interpolation=None)
+        try:
+            cp.read(path)
+        except configparser.Error:
+            continue
+        for alias in cp.sections():
+            s = cp[alias]
+            if s.get("enabled", "1").strip() == "1" and s.get("baseurl"):
+                repos[alias] = s.get("baseurl").split()[0].strip()
+    return repos
+
+
+def repomd_revision(baseurl):
+    try:
+        xml = fetch(baseurl.rstrip("/") + "/repodata/repomd.xml")
+        m = re.search(r"<revision>(\d+)</revision>", xml)
+        return int(m.group(1)) if m else None
+    except Exception:
+        return None
+
+
+def packman_lag():
+    """Days the Packman repomd revision lags the OSS one (epoch-based)."""
+    repos = repo_baseurls()
+    packman = next((u for a, u in repos.items() if PACKMAN_RE.search(a) or PACKMAN_RE.search(u)), None)
+    oss = next((u for a, u in repos.items()
+                if "tumbleweed/repo/oss" in u or a == "repo-oss"), None)
+    if not packman or not oss:
+        return None, None, None
+    prev_, orev = repomd_revision(packman), repomd_revision(oss)
+    # revisions are unix timestamps on both repos; sanity-check that
+    if not prev_ or not orev or prev_ < 1e9 or orev < 1e9:
+        return None, prev_, orev
+    return max(0, int((orev - prev_) / 86400)), prev_, orev
+
+
+def build_status(verdict, reasons, parsed=None, extra=None, collisions=None):
+    sec = (parsed or {}).get("sections", {})
+    counts = {k: len(v) for k, v in sec.items()}
+    counts.update((parsed or {}).get("declared_counts", {}))
+    st = {
+        "checker_version": VERSION,
+        "timestamp": int(time.time()),
+        "verdict": verdict,
+        "reasons": reasons,
+        "counts": counts,
+        "packages": {k: v[:400] for k, v in sec.items()},
+        "problems": (parsed or {}).get("problems", []),
+        "collisions": collisions or [],
+        "download_size": (parsed or {}).get("download_size"),
+        "retryable": False,
+    }
+    st.update(extra or {})
+    top = {
+        "UP_TO_DATE": "System is up to date",
+        "SAFE": "Safe update ready: %d package(s)%s" % (
+            counts.get("upgrade", 0) + counts.get("new", 0),
+            (", " + st["download_size"]) if st.get("download_size") else ""),
+        "CAUTION": "Update available, but review recommended",
+        "UNSAFE": "Update available but NOT safe right now",
+        "ERROR": "Could not check for updates",
+    }
+    st["summary"] = top.get(verdict, verdict)
+    h = hashlib.sha1(json.dumps(
+        [verdict, st.get("latest_snapshot"), counts, len(st["problems"]),
+         sorted((c["name"], c.get("risk")) for c in st["collisions"])],
+        sort_keys=True).encode()).hexdigest()
+    st["status_hash"] = h
+    return st
+
+
+SEV_COLOR = {"safe": "\033[32m", "caution": "\033[33m", "unsafe": "\033[31m",
+             "info": "\033[36m"}
+VERDICT_COLOR = {"UP_TO_DATE": "\033[32m", "SAFE": "\033[32m",
+                 "CAUTION": "\033[33m", "UNSAFE": "\033[31m",
+                 "ERROR": "\033[31m"}
+
+
+def print_pretty(st):
+    c = VERDICT_COLOR.get(st["verdict"], "")
+    r = "\033[0m"
+    b = "\033[1m"
+    print("%s%s══ TW Safe Update ══%s" % (b, c, r))
+    print("%s%s%s — %s" % (c + b, st["verdict"], r, st["summary"]))
+    if st.get("installed_snapshot"):
+        line = "Snapshot: %s installed" % st["installed_snapshot"]
+        if st.get("latest_snapshot"):
+            line += " → %s available" % st["latest_snapshot"]
+        print(line)
+    if st.get("download_size"):
+        print("Download size: %s" % st["download_size"])
+    cnt = st.get("counts", {})
+    if cnt:
+        print("Changes: " + ", ".join("%s %s" % (v, k.replace("_", " "))
+                                      for k, v in sorted(cnt.items()) if v))
+    for reason in st.get("reasons", []):
+        col = SEV_COLOR.get(reason["severity"], "")
+        print("  %s•%s %s" % (col, r, reason["text"]))
+    for p in st.get("problems", [])[:10]:
+        print("  \033[31m✗\033[0m %s" % p["problem"])
+        for s in p.get("solutions", [])[:6]:
+            print("      \033[2m%s\033[0m" % s)
+    for c in st.get("collisions", []):
+        inst, cand = c.get("installed") or {}, c.get("candidate") or {}
+        if c["risk"] == "collision":
+            print("  \033[31m⚠ name collision: %s\033[0m" % c["name"])
+        elif c["risk"] == "adoption":
+            print("  \033[33m↺ vendor adoption: %s\033[0m" % c["name"])
+        else:
+            continue
+        print("      yours:  %s %s  %s  (%s)" % (inst.get("vendor", "?"),
+              inst.get("version", ""), inst.get("summary", ""), inst.get("url", "")))
+        if cand:
+            print("      repo:   %s %s  %s  (%s)" % (cand.get("vendor", "?"),
+                  cand.get("version", ""), cand.get("summary", ""), cand.get("url", "")))
+        if c["risk"] == "collision":
+            print("      \033[1mkeep yours:\033[0m sudo zypper addlock %s" % c["name"])
+    print("Checked: %s" % time.strftime("%Y-%m-%d %H:%M",
+                                        time.localtime(st["timestamp"])))
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--pretty", action="store_true", help="human output instead of JSON")
+    ap.add_argument("--no-refresh", action="store_true", help="skip metadata refresh")
+    ap.add_argument("--offline", action="store_true", help="skip all network extras")
+    ap.add_argument("--cached", action="store_true",
+                    help="print the last saved status without re-checking")
+    ap.add_argument("--parse-file", metavar="FILE", help="parse recorded zypper output (testing)")
+    args = ap.parse_args()
+
+    if args.cached:
+        try:
+            with open(STATUS_FILE) as f:
+                st = json.load(f)
+        except (OSError, ValueError):
+            st = build_status("ERROR", [{"severity": "info", "text":
+                              "No check has run yet. Use “Check now”."}],
+                              None, {"installed_snapshot": installed_snapshot()})
+        if args.pretty:
+            print_pretty(st)
+        else:
+            json.dump(st, sys.stdout, indent=1)
+            print()
+        return
+
+    extra = {"installed_snapshot": installed_snapshot(),
+             "latest_snapshot": None, "refresh_ok": None,
+             "packman_lag_days": None}
+
+    refresh_note = None
+    parsed = None
+    verdict = None
+    reasons = []
+
+    if args.parse_file:
+        with open(args.parse_file) as f:
+            parsed = parse_dup_output(f.read())
+    else:
+        if not args.no_refresh:
+            rc, out, err = run(REFRESH_CMD)
+            extra["refresh_ok"] = rc == 0
+            if sudo_denied(rc, err):
+                verdict = "ERROR"
+                reasons = [{"severity": "unsafe", "text":
+                            "Passwordless sudo rule missing — run install.sh "
+                            "to allow the read-only refresh/dry-run commands."}]
+            elif rc == 7:
+                verdict = "ERROR"
+                reasons = [{"severity": "info", "text":
+                            "Package manager is busy (zypp locked) — will retry."}]
+            elif rc == 106:
+                refresh_note = ("Some repositories failed to refresh (mirror "
+                                "issue?) — analysis may use stale metadata.")
+            elif rc != 0:
+                refresh_note = ("Repository refresh failed (exit %d) — analysis "
+                                "uses cached metadata. %s" % (rc, err.strip()[:200]))
+
+        if verdict is None:
+            rc, out, err = run(DUP_CMD)
+            try:
+                os.makedirs(CACHE_DIR, exist_ok=True)
+                with open(RAW_FILE, "w") as f:
+                    f.write(out + "\n--- stderr ---\n" + err)
+            except OSError:
+                pass
+            if sudo_denied(rc, err):
+                verdict = "ERROR"
+                reasons = [{"severity": "unsafe", "text":
+                            "Passwordless sudo rule missing — run install.sh "
+                            "to allow the read-only refresh/dry-run commands."}]
+            elif rc == 7:
+                verdict = "ERROR"
+                reasons = [{"severity": "info", "text":
+                            "Package manager is busy (zypp locked) — will retry."}]
+            else:
+                # Parseable output is the primary signal: zypper's dry-run can
+                # exit non-zero with informational codes (8, 103, 104, 106, …)
+                # while still having produced a valid, analyzable transaction.
+                parsed = parse_dup_output(out)
+                got_output = bool(parsed["nothing_to_do"] or parsed["problems"]
+                                  or any(parsed["sections"].values()))
+                if not got_output and rc not in (0, 4):
+                    parsed = None
+                    verdict = "ERROR"
+                    reasons = [{"severity": "unsafe", "text":
+                                "zypper dup --dry-run failed (exit %d): %s"
+                                % (rc, (err or out).strip()[-300:])}]
+
+    if not args.offline and not args.parse_file:
+        extra["latest_snapshot"] = latest_snapshot()
+        lag, prev_, orev = packman_lag()
+        extra["packman_lag_days"] = lag
+        extra["packman_repomd"] = prev_
+        extra["oss_repomd"] = orev
+
+    collisions = []
+    if parsed is not None and not args.parse_file:
+        collisions = detect_collisions(parsed)
+
+    if verdict is None and parsed is not None:
+        verdict, reasons = analyze(parsed, refresh_note=refresh_note,
+                                   packman_lag_days=extra.get("packman_lag_days"),
+                                   collisions=collisions)
+        if (verdict == "UP_TO_DATE" and extra.get("latest_snapshot")
+                and extra.get("installed_snapshot")
+                and extra["latest_snapshot"] > extra["installed_snapshot"]):
+            reasons.append({"severity": "info", "text":
+                            "Snapshot %s is published but your mirror is not "
+                            "offering it yet." % extra["latest_snapshot"]})
+
+    st = build_status(verdict or "ERROR", reasons, parsed, extra, collisions)
+    if verdict == "ERROR" and any("busy" in r["text"] for r in reasons):
+        st["retryable"] = True
+
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(STATUS_FILE, "w") as f:
+            json.dump(st, f, indent=1)
+    except OSError:
+        pass
+
+    if args.pretty:
+        print_pretty(st)
+    else:
+        json.dump(st, sys.stdout, indent=1)
+        print()
+
+
+if __name__ == "__main__":
+    main()

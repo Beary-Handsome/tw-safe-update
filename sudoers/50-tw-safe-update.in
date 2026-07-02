@@ -1,0 +1,11 @@
+# Installed by tw-safe-update/install.sh as /etc/sudoers.d/50-tw-safe-update
+#
+# Grants ONE user the ability to run the two READ-ONLY zypper commands the
+# checker needs, without a password. Neither command can modify the system:
+#   * refresh                     — only updates repo metadata
+#   * dist-upgrade --dry-run      — computes, but never applies, the upgrade
+# The real update (twsu-update) uses ordinary sudo and still asks for a password.
+#
+# The argument lists must match twsu-check's REFRESH_CMD / DUP_CMD exactly.
+__USER__ ALL=(root) NOPASSWD: /usr/bin/zypper --non-interactive refresh
+__USER__ ALL=(root) NOPASSWD: /usr/bin/zypper --non-interactive --no-refresh dist-upgrade --dry-run

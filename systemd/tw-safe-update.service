@@ -1,0 +1,13 @@
+[Unit]
+Description=TW Safe Update — check for a safe Tumbleweed dist-upgrade
+Documentation=file:%h/tw-safe-update/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/twsu-check
+Nice=10
+IOSchedulingClass=idle
+# The check only runs read-only zypper commands (refresh + dup --dry-run)
+# via the narrow NOPASSWD rule in /etc/sudoers.d/50-tw-safe-update.

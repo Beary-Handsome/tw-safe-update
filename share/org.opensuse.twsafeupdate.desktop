@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=TW Update Assistant
+GenericName=Safe-update watcher
+Comment=Shows when it is safe to run a Tumbleweed zypper dup
+Exec=twsu-tray
+Icon=software-update-available
+Categories=System;
+Keywords=update;upgrade;zypper;tumbleweed;dup;safe;
+Terminal=false
+StartupNotify=false

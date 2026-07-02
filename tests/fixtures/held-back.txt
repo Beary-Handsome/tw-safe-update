@@ -1,0 +1,14 @@
+Loading repository data...
+Reading installed packages...
+Computing distribution upgrade...
+
+The following 8 package updates will NOT be installed:
+  ffmpeg-7 gstreamer-plugins-libav libavcodec62 libavformat62 libavutil60
+  mpv vlc vlc-codecs
+
+The following 154 packages are going to be upgraded:
+  Mesa Mesa-dri bash coreutils glibc kwin6 plasma6-desktop zypper
+
+154 packages to upgrade.
+Overall download size: 201.7 MiB. Already cached: 0 B. After the operation, additional 1.2 MiB will be used.
+Continue? [y/n/v/...? shows all options] (y): y

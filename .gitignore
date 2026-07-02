@@ -1,0 +1,13 @@
+# build output
+tray/build/
+*.o
+*.moc
+
+# python caches
+__pycache__/
+*.pyc
+
+# editor / os cruft
+*~
+.*.swp
+.DS_Store

@@ -1,0 +1,17 @@
+Loading repository data...
+Reading installed packages...
+Computing distribution upgrade...
+
+The following 187 packages are going to be upgraded:
+  Mesa Mesa-dri bash coreutils glibc plasma6-desktop plasma6-workspace zypper
+
+The following 5 packages are going to change vendor:
+  ffmpeg-7           http://packman.links2linux.de -> openSUSE
+  libavcodec62       http://packman.links2linux.de -> openSUSE
+  libavformat62      http://packman.links2linux.de -> openSUSE
+  gstreamer-plugins-libav  http://packman.links2linux.de -> openSUSE
+  pipewire-aptx      http://packman.links2linux.de -> openSUSE
+
+187 packages to upgrade, 5 to change vendor.
+Overall download size: 290.3 MiB. Already cached: 0 B. After the operation, additional 2.1 MiB will be used.
+Continue? [y/n/v/...? shows all options] (y): y

@@ -276,11 +276,10 @@ private:
                 termPart_ = res.plugin;
                 termIface_ = qobject_cast<TerminalInterface *>(termPart_);
                 termHostLayout_->addWidget(termPart_->widget());
-                termPart_->widget()->show();
-                if (termIface_) termIface_->startProgram(program, QStringList());
             }
         }
-        if (!termPart_) {   // KPart unavailable — fall back to an external terminal
+        if (!termPart_ || !termIface_) {   // KPart unavailable — external terminal
+            if (termPart_) { delete termPart_; termPart_ = nullptr; termIface_ = nullptr; }
             if (!QProcess::startDetached(terminal_, {"-e", program})) {
                 QMessageBox::warning(this, "TW Update Assistant",
                     "Could not open a terminal to run this command.\n\n"
@@ -294,6 +293,14 @@ private:
         stack_->setCurrentWidget(termPage_);
         if (width() < 720 || height() < 480) resize(780, 540);
         show(); raise(); activateWindow();
+        // Start the program only after the terminal view is on-screen and
+        // realized — konsolepart won't create its PTY while its widget is
+        // hidden, which otherwise leaves a blank terminal.
+        KParts::ReadOnlyPart *part = termPart_;
+        QTimer::singleShot(0, this, [this, part, program]{
+            if (termPart_ == part && termIface_)
+                termIface_->startProgram(program, QStringList());
+        });
     }
 
     void backToStatus() {

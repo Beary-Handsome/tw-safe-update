@@ -33,7 +33,7 @@ jobs:
           git archive --prefix="tw-safe-update-${version}/" \
             -o ~/rpmbuild/SOURCES/tw-safe-update-${version}.tar.gz HEAD
           cp packaging/tw-safe-update.spec ~/rpmbuild/SPECS/
-          rpmbuild -ba ~/rpmbuild/SPECS/tw-safe-update.spec
+          rpmbuild --define "_topdir $HOME/rpmbuild" -ba ~/rpmbuild/SPECS/tw-safe-update.spec
           mkdir -p out
           cp ~/rpmbuild/RPMS/*/*.rpm ~/rpmbuild/SRPMS/*.rpm out/
           ls -l out

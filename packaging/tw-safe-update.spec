@@ -29,6 +29,7 @@ Requires:       sudo
 Requires:       python3-base
 # Konsole provides the KPart embedded in the update window.
 Requires:       konsole
+Requires(pre):  shadow
 
 %description
 TW Safe Update ("TW Update Assistant") is a KDE Plasma 6 background tray
@@ -83,16 +84,12 @@ cat > %{buildroot}%{_sysconfdir}/sudoers.d/50-tw-safe-update <<'EOF'
 EOF
 chmod 0440 %{buildroot}%{_sysconfdir}/sudoers.d/50-tw-safe-update
 
-# create the group via systemd-sysusers
-install -Dm0644 /dev/stdin %{buildroot}%{_sysusersdir}/tw-safe-update.conf <<'EOF'
-g twsafeupdate -
-EOF
-
 %pre
-%sysusers_create_pre %{_sysusersdir}/tw-safe-update.conf
+# The read-only sudoers rule is granted to this group; users opt in with
+# `usermod -aG twsafeupdate <user>`.
+getent group twsafeupdate >/dev/null || groupadd -r twsafeupdate || :
 
 %post
-%sysusers_create_package %{name} %{_sysusersdir}/tw-safe-update.conf
 # Enable the user units for every user's session (next login).
 %systemd_user_post tw-safe-update.timer
 %systemd_user_post tw-safe-update-tray.service
@@ -116,7 +113,6 @@ EOF
 %{_userunitdir}/tw-safe-update.timer
 %{_userunitdir}/tw-safe-update-tray.service
 %{_datadir}/applications/org.opensuse.twsafeupdate.desktop
-%{_sysusersdir}/tw-safe-update.conf
 %config(noreplace) %{_sysconfdir}/sudoers.d/50-tw-safe-update
 
 %changelog

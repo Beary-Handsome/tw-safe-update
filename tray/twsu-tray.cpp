@@ -266,20 +266,25 @@ private:
     }
 
     void runInTerminal(const QString &program, const QString &title) {
-        // fresh Konsole KPart each run so it starts with a clean PTY
-        if (termPart_) { delete termPart_; termPart_ = nullptr; termIface_ = nullptr; }
-        KPluginMetaData md = KPluginMetaData::findPluginById(
-            QStringLiteral("kf6/parts"), QStringLiteral("konsolepart"));
-        if (md.isValid()) {
-            auto res = KParts::PartLoader::instantiatePart<KParts::ReadOnlyPart>(md, this);
-            if (res) {
-                termPart_ = res.plugin;
-                termIface_ = qobject_cast<TerminalInterface *>(termPart_);
-                termHostLayout_->addWidget(termPart_->widget());
+        // Create the Konsole KPart once and keep it — a persistent interactive
+        // shell, the way Dolphin/Kate embed a terminal. We type the command into
+        // that shell with sendInput() rather than startProgram(): the shell keeps
+        // running so its output stays visible after the command exits, and there
+        // is no per-run create/teardown race that leaves a blank view.
+        if (!termPart_) {
+            KPluginMetaData md = KPluginMetaData::findPluginById(
+                QStringLiteral("kf6/parts"), QStringLiteral("konsolepart"));
+            if (md.isValid()) {
+                auto res = KParts::PartLoader::instantiatePart<KParts::ReadOnlyPart>(md, this);
+                if (res) {
+                    termPart_ = res.plugin;
+                    termIface_ = qobject_cast<TerminalInterface *>(termPart_);
+                    if (termIface_) termHostLayout_->addWidget(termPart_->widget());
+                    else { delete termPart_; termPart_ = nullptr; }
+                }
             }
         }
         if (!termPart_ || !termIface_) {   // KPart unavailable — external terminal
-            if (termPart_) { delete termPart_; termPart_ = nullptr; termIface_ = nullptr; }
             if (!QProcess::startDetached(terminal_, {"-e", program})) {
                 QMessageBox::warning(this, "TW Update Assistant",
                     "Could not open a terminal to run this command.\n\n"
@@ -293,18 +298,24 @@ private:
         stack_->setCurrentWidget(termPage_);
         if (width() < 720 || height() < 480) resize(780, 540);
         show(); raise(); activateWindow();
-        // Start the program only after the terminal view is on-screen and
-        // realized — konsolepart won't create its PTY while its widget is
-        // hidden, which otherwise leaves a blank terminal.
-        KParts::ReadOnlyPart *part = termPart_;
-        QTimer::singleShot(0, this, [this, part, program]{
-            if (termPart_ == part && termIface_)
-                termIface_->startProgram(program, QStringList());
+
+        // Let the widget get an on-screen surface and real size, then (first
+        // time) start the shell and type the command into it.
+        const QString cmd = program;
+        QTimer::singleShot(200, this, [this, cmd]{
+            if (!termIface_) return;
+            if (!shellStarted_) {
+                termIface_->showShellInDir(QDir::homePath());
+                shellStarted_ = true;
+            }
+            QTimer::singleShot(250, this, [this, cmd]{
+                if (termIface_) termIface_->sendInput(cmd + QStringLiteral("\n"));
+            });
         });
     }
 
     void backToStatus() {
-        if (termPart_) { delete termPart_; termPart_ = nullptr; termIface_ = nullptr; }
+        // Keep the shell alive for reuse; just switch back to the status page.
         stack_->setCurrentWidget(statusPage_);
         resize(420, 480);
         emit recheckRequested();
@@ -358,6 +369,7 @@ private:
     QPushButton *update_ = nullptr;
     KParts::ReadOnlyPart *termPart_ = nullptr;
     TerminalInterface *termIface_ = nullptr;
+    bool shellStarted_ = false;
     QString terminal_ = "konsole";
 };
 

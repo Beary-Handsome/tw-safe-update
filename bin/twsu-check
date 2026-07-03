@@ -491,6 +491,22 @@ def packman_lag():
     return max(0, int((orev - prev_) / 86400)), prev_, orev
 
 
+def flatpak_updates():
+    """Flatpak apps/runtimes with a pending update. Read-only; uses flatpak's
+    cached remote metadata (no install, no root). Empty if flatpak is absent."""
+    rc, out, _ = run(["flatpak", "remote-ls", "--updates",
+                      "--columns=application,version"], timeout=60)
+    if rc != 0:
+        return []
+    seen = {}
+    for line in out.splitlines():
+        parts = line.split("\t")
+        app = parts[0].strip()
+        if app and app not in seen:
+            seen[app] = parts[1].strip() if len(parts) > 1 else ""
+    return [{"app": a, "version": v} for a, v in seen.items()]
+
+
 def build_status(verdict, reasons, parsed=None, extra=None, collisions=None):
     sec = (parsed or {}).get("sections", {})
     counts = {k: len(v) for k, v in sec.items()}
@@ -572,6 +588,11 @@ def print_pretty(st):
                   cand.get("version", ""), cand.get("summary", ""), cand.get("url", "")))
         if c["risk"] == "collision":
             print("      \033[1mkeep yours:\033[0m sudo zypper addlock %s" % c["name"])
+    fp = st.get("flatpak_updates", [])
+    if fp:
+        print("\033[36mFlatpak:\033[0m %d update(s) available — %s"
+              % (len(fp), ", ".join(x["app"] for x in fp[:8])
+                 + (" …" if len(fp) > 8 else "")))
     print("Checked: %s" % time.strftime("%Y-%m-%d %H:%M",
                                         time.localtime(st["timestamp"])))
 
@@ -670,6 +691,9 @@ def main():
         extra["packman_lag_days"] = lag
         extra["packman_repomd"] = prev_
         extra["oss_repomd"] = orev
+        extra["flatpak_updates"] = flatpak_updates()
+    else:
+        extra["flatpak_updates"] = []
 
     collisions = []
     if parsed is not None and not args.parse_file:

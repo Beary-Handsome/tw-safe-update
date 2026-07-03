@@ -2,8 +2,8 @@
 # Show the last saved verdict in full, then wait. Launched by the tray's
 # "Details" button (and by the notification body click for non-safe verdicts).
 set -u
-CHECK="$HOME/.local/bin/twsu-check"
-[ -x "$CHECK" ] || CHECK="$(dirname "$0")/twsu-check"
+CHECK="$(dirname "$0")/twsu-check"
+[ -x "$CHECK" ] || CHECK="twsu-check"
 
 "$CHECK" --pretty --cached
 echo

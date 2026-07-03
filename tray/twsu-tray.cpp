@@ -123,8 +123,9 @@ public:
 
     void setTerminal(const QString &t) { terminal_ = t; }
 
-    void runUpdate()  { recheckOnBack_ = true;  runInTerminal(helper("twsu-update"),  "Updating — enter your password when asked"); }
-    void runDetails() { recheckOnBack_ = false; runInTerminal(helper("twsu-details"), "Details"); }
+    void runUpdate()   { recheckOnBack_ = true;  runInTerminal(helper("twsu-update"),  "Updating — enter your password when asked"); }
+    void runDetails()  { recheckOnBack_ = false; runInTerminal(helper("twsu-details"), "Details"); }
+    void runFlatpaks() { recheckOnBack_ = true;  runInTerminal("flatpak update", "Flatpak updates"); }
     void showStatus() { stack_->setCurrentWidget(statusPage_); }
 
     void setStatus(const QJsonObject &o, bool checking) {
@@ -184,6 +185,21 @@ public:
                 addInfo(QString("%1 upgrades, %2 new%3. Click “Update now” to install.")
                         .arg(up).arg(nw).arg(sz.isEmpty() ? "" : "  ·  " + sz + " download"));
         }
+
+        // Flatpak updates (independent of the zypper verdict).
+        const QJsonArray fp = o.value("flatpak_updates").toArray();
+        if (!fp.isEmpty()) {
+            QStringList apps;
+            for (const QJsonValue &fv : fp) apps << fv.toObject().value("app").toString();
+            addInfo(QString("%1 Flatpak update%2 available: %3%4")
+                    .arg(fp.size()).arg(fp.size() == 1 ? "" : "s")
+                    .arg(apps.mid(0, 8).join(", "))
+                    .arg(fp.size() > 8 ? " …" : ""));
+        }
+        flatpak_->setText(fp.isEmpty() ? "Update Flatpaks"
+                                       : QString("Update Flatpaks (%1)").arg(fp.size()));
+        flatpak_->setVisible(!fp.isEmpty() && !checking);
+
         bodyLayout_->addStretch();
     }
 
@@ -234,13 +250,16 @@ private:
 
         auto *btns = new QHBoxLayout();
         auto *check = new QPushButton(QIcon::fromTheme("view-refresh"), "Check now");
+        flatpak_ = new QPushButton(QIcon::fromTheme("flatpak"), "Update Flatpaks");
+        flatpak_->setVisible(false);
         auto *details = new QPushButton(QIcon::fromTheme("utilities-terminal"), "Details");
         update_ = new QPushButton(QIcon::fromTheme("system-software-update"), "Update now");
-        connect(check,   &QPushButton::clicked, this, [this]{ emit checkRequested(); });
-        connect(details, &QPushButton::clicked, this, [this]{ runDetails(); });
-        connect(update_, &QPushButton::clicked, this, [this]{ runUpdate(); });
+        connect(check,    &QPushButton::clicked, this, [this]{ emit checkRequested(); });
+        connect(flatpak_, &QPushButton::clicked, this, [this]{ runFlatpaks(); });
+        connect(details,  &QPushButton::clicked, this, [this]{ runDetails(); });
+        connect(update_,  &QPushButton::clicked, this, [this]{ runUpdate(); });
         btns->addWidget(check); btns->addStretch();
-        btns->addWidget(details); btns->addWidget(update_);
+        btns->addWidget(flatpak_); btns->addWidget(details); btns->addWidget(update_);
         v->addLayout(btns);
         return statusPage_;
     }
@@ -366,7 +385,7 @@ private:
     QVBoxLayout *bodyLayout_ = nullptr, *termHostLayout_ = nullptr;
     QLabel *headline_ = nullptr, *summary_ = nullptr, *snapshot_ = nullptr,
            *meta_ = nullptr, *termTitle_ = nullptr;
-    QPushButton *update_ = nullptr;
+    QPushButton *update_ = nullptr, *flatpak_ = nullptr;
     KParts::ReadOnlyPart *termPart_ = nullptr;
     TerminalInterface *termIface_ = nullptr;
     bool recheckOnBack_ = false;

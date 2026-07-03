@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # tw-safe-update: interactive terminal wrapper around the real `zypper dup`.
-# Launched by the plasmoid in konsole; the real update intentionally asks
-# for your password (only the read-only dry-run checks are passwordless).
+# Launched by the tray in a terminal; the real update intentionally asks for
+# your password (only the read-only dry-run checks are passwordless).
 set -u
+
+# Resolve the checker next to this script (works for both the /usr/bin package
+# and a ~/.local/bin dev install), falling back to PATH.
+CHECK="$(dirname "$0")/twsu-check"
+[ -x "$CHECK" ] || CHECK="twsu-check"
 
 BOLD=$'\e[1m'; GREEN=$'\e[32m'; RED=$'\e[31m'; RESET=$'\e[0m'
 
@@ -25,7 +30,7 @@ fi
 
 echo
 echo "Re-checking system status…"
-"$HOME/.local/bin/twsu-check" --pretty --no-refresh || true
+"$CHECK" --pretty --no-refresh || true
 
 echo
 read -rp "Press Enter to close this window…"

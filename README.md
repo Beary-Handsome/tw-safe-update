@@ -97,6 +97,10 @@ per-user sudoers rule and the systemd units.
   the reasons, and buttons.
 - **Update now** and **Details** run in a terminal embedded right in the window —
   the real `zypper dup` asks for your password there.
+- If any **Flatpak** apps have updates, the window shows them with an **Update
+  Flatpaks** button (runs `flatpak update` in the same terminal). Flatpaks are
+  sandboxed and update independently, so these are shown for convenience — they
+  don't affect the "safe to `dup`" verdict.
 
 ## Configuration
 

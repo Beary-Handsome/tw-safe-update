@@ -1,5 +1,7 @@
 # TW Safe Update
 
+[![build](https://github.com/Beary-Handsome/tw-safe-update/actions/workflows/build.yml/badge.svg)](https://github.com/Beary-Handsome/tw-safe-update/actions/workflows/build.yml)
+
 A **background system-tray service** for **openSUSE Tumbleweed** (KDE Plasma 6)
 that tells you when it is *safe* to run `sudo zypper dup` — and lets you do it
 right from the tray. The app shows in your launcher and tray as
@@ -55,7 +57,28 @@ Update fetches each package's **upstream URL** and compares them:
 
 ## Install
 
-From a git checkout:
+### Prebuilt RPM (openSUSE Tumbleweed)
+
+Every tagged version is built by CI. Grab the latest
+`tw-safe-update-*.x86_64.rpm` from the
+[Releases page](https://github.com/Beary-Handsome/tw-safe-update/releases) and:
+
+```bash
+sudo zypper install ./tw-safe-update-*.x86_64.rpm
+```
+
+Then, once per user (a system package can't know which user wants it):
+
+```bash
+sudo usermod -aG twsafeupdate "$USER"      # allow the passwordless read-only dry-run
+# log out and back in, then:
+systemctl --user enable --now tw-safe-update-tray.service tw-safe-update.timer
+```
+
+You can also pull the RPM from the Artifacts of any green run on the
+[Actions tab](https://github.com/Beary-Handsome/tw-safe-update/actions).
+
+### From source
 
 ```bash
 cd tw-safe-update

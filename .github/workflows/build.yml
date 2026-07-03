@@ -1,0 +1,54 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rpm:
+    runs-on: ubuntu-latest
+    container: opensuse/tumbleweed:latest
+    steps:
+      - name: Install build dependencies
+        run: |
+          zypper --non-interactive --gpg-auto-import-keys refresh
+          zypper --non-interactive install --no-recommends \
+            git tar gzip rpm-build cmake gcc-c++ extra-cmake-modules \
+            "cmake(Qt6Widgets)" "cmake(Qt6DBus)" \
+            "cmake(KF6StatusNotifierItem)" "cmake(KF6Parts)"
+
+      - uses: actions/checkout@v4
+
+      - name: Build the RPM
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          version=$(rpmspec -q --qf '%{version}\n' packaging/tw-safe-update.spec | head -1)
+          mkdir -p ~/rpmbuild/{SOURCES,SPECS}
+          git archive --prefix="tw-safe-update-${version}/" \
+            -o ~/rpmbuild/SOURCES/tw-safe-update-${version}.tar.gz HEAD
+          cp packaging/tw-safe-update.spec ~/rpmbuild/SPECS/
+          rpmbuild -ba ~/rpmbuild/SPECS/tw-safe-update.spec
+          mkdir -p out
+          cp ~/rpmbuild/RPMS/*/*.rpm ~/rpmbuild/SRPMS/*.rpm out/
+          ls -l out
+
+      - name: Run the offline tests
+        run: bash tests/run-tests.sh
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpms
+          path: out/*.rpm
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.rpm

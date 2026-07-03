@@ -19,7 +19,7 @@ jobs:
         run: |
           zypper --non-interactive --gpg-auto-import-keys refresh
           zypper --non-interactive install --no-recommends \
-            git tar gzip rpm-build cmake gcc-c++ extra-cmake-modules \
+            git tar gzip rpm-build rpm-sign gpg2 cmake gcc-c++ extra-cmake-modules \
             "cmake(Qt6Widgets)" "cmake(Qt6DBus)" \
             "cmake(KF6StatusNotifierItem)" "cmake(KF6Parts)"
 
@@ -40,6 +40,21 @@ jobs:
 
       - name: Run the offline tests
         run: bash tests/run-tests.sh
+
+      - name: Sign the RPMs
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "$GPG_PRIVATE_KEY" ]; then
+            echo "No GPG_PRIVATE_KEY secret set — leaving packages unsigned."
+            exit 0
+          fi
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          name=$(gpg --list-secret-keys --with-colons | awk -F: '/^uid:/{print $10; exit}')
+          printf '%%_gpg_name %s\n' "$name" > ~/.rpmmacros
+          rpmsign --addsign out/*.rpm
+          rpm --import RPM-GPG-KEY-tw-safe-update
+          rpm --checksig out/*.rpm
 
       - name: Upload the packages
         uses: actions/upload-artifact@v4

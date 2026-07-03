@@ -49,7 +49,13 @@ check for the common footguns, not a guarantee.
 
 **Requires openSUSE Tumbleweed with KDE Plasma 6.**
 
-1. Download the latest `tw-safe-update-*.x86_64.rpm` from the
+1. Import the signing key once (so zypper trusts the package):
+
+   ```bash
+   sudo rpm --import https://raw.githubusercontent.com/Beary-Handsome/tw-safe-update/main/RPM-GPG-KEY-tw-safe-update
+   ```
+
+2. Download the latest `tw-safe-update-*.x86_64.rpm` from the
    [**Releases page**](https://github.com/Beary-Handsome/tw-safe-update/releases/latest)
    and install it:
 
@@ -57,14 +63,14 @@ check for the common footguns, not a guarantee.
    sudo zypper install ./tw-safe-update-*.x86_64.rpm
    ```
 
-2. Opt in and start it (a system package can't know which user wants it):
+3. Opt in and start it (a system package can't know which user wants it):
 
    ```bash
    sudo usermod -aG twsafeupdate "$USER"
    systemctl --user enable --now tw-safe-update-tray.service tw-safe-update.timer
    ```
 
-3. **Log out and back in** — that's needed for the group to take effect.
+4. **Log out and back in** — that's needed for the group to take effect.
 
 That's it. It watches quietly in the background; the tray icon appears only when
 a safe update is ready. You can open **TW Update Assistant** from your launcher

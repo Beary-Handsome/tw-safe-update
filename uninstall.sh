@@ -31,12 +31,8 @@ command -v update-desktop-database >/dev/null && \
 say "Removing the compiled tray build tree"
 rm -rf "$SRC/tray/build"
 
-if [ -e "$SUDOERS" ] || sudo -n test -e "$SUDOERS" 2>/dev/null; then
-    say "Removing the sudoers rule (requires your password)"
-    sudo rm -f "$SUDOERS" || say "  (sudoers rule not removed)"
-else
-    say "No sudoers rule to remove"
-fi
+say "Removing the sudoers rule (asks for your password)"
+sudo rm -f "$SUDOERS" || say "  (sudoers rule not removed)"
 
 say "Removing cached status and config"
 rm -rf "$HOME/.cache/tw-safe-update" "$HOME/.config/tw-safe-update"

@@ -7,7 +7,7 @@
 #
 
 Name:           tw-safe-update
-Version:        1.0.2
+Version:        1.0.3
 Release:        0
 Summary:        Tells you when it is safe to run a Tumbleweed "zypper dup"
 License:        MIT
@@ -116,6 +116,8 @@ getent group twsafeupdate >/dev/null || groupadd -r twsafeupdate || :
 %config(noreplace) %{_sysconfdir}/sudoers.d/50-tw-safe-update
 
 %changelog
+* Fri Jul 03 2026 Beary-Handsome <michael.abballe@gmail.com> - 1.0.3-0
+- Use a fresh terminal per open so re-opening Details is a clean run.
 * Fri Jul 03 2026 Beary-Handsome <michael.abballe@gmail.com> - 1.0.2-0
 - Only re-check after a real update, not after viewing Details.
 

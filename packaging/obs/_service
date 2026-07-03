@@ -1,0 +1,20 @@
+<services>
+  <!--
+    Pulls the source straight from GitHub and builds a versioned tarball that
+    matches Source0 in tw-safe-update.spec (tw-safe-update-<version>.tar.gz).
+    Bump <revision> to a tag (e.g. v1.0.0) for reproducible releases.
+  -->
+  <service name="obs_scm">
+    <param name="url">https://github.com/Beary-Handsome/tw-safe-update.git</param>
+    <param name="scm">git</param>
+    <param name="revision">main</param>
+    <param name="versionformat">1.0.0</param>
+    <param name="filename">tw-safe-update</param>
+  </service>
+  <service name="tar" mode="buildtime"/>
+  <service name="recompress" mode="buildtime">
+    <param name="file">*.tar</param>
+    <param name="compression">gz</param>
+  </service>
+  <service name="set_version" mode="buildtime"/>
+</services>

@@ -123,8 +123,8 @@ public:
 
     void setTerminal(const QString &t) { terminal_ = t; }
 
-    void runUpdate()  { runInTerminal(helper("twsu-update"),  "Updating — enter your password when asked"); }
-    void runDetails() { runInTerminal(helper("twsu-details"), "Details"); }
+    void runUpdate()  { recheckOnBack_ = true;  runInTerminal(helper("twsu-update"),  "Updating — enter your password when asked"); }
+    void runDetails() { recheckOnBack_ = false; runInTerminal(helper("twsu-details"), "Details"); }
     void showStatus() { stack_->setCurrentWidget(statusPage_); }
 
     void setStatus(const QJsonObject &o, bool checking) {
@@ -318,7 +318,9 @@ private:
         // Keep the shell alive for reuse; just switch back to the status page.
         stack_->setCurrentWidget(statusPage_);
         resize(420, 480);
-        emit recheckRequested();
+        // Re-check only after a real update changed the system — not after
+        // Details, which reads the cached verdict and changes nothing.
+        if (recheckOnBack_) { recheckOnBack_ = false; emit recheckRequested(); }
     }
 
     void clearBody() {
@@ -370,6 +372,7 @@ private:
     KParts::ReadOnlyPart *termPart_ = nullptr;
     TerminalInterface *termIface_ = nullptr;
     bool shellStarted_ = false;
+    bool recheckOnBack_ = false;
     QString terminal_ = "konsole";
 };
 

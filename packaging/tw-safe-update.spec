@@ -7,10 +7,10 @@
 #
 
 Name:           tw-safe-update
-Version:        1.1.0
+Version:        1.1.1
 Release:        0
 Summary:        Tells you when it is safe to run a Tumbleweed "zypper dup"
-License:        MIT
+License:        MIT AND CC-BY-SA-4.0
 URL:            https://github.com/Beary-Handsome/tw-safe-update
 Source0:        %{name}-%{version}.tar.gz
 
@@ -138,6 +138,9 @@ getent group twsafeupdate >/dev/null || groupadd -r twsafeupdate || :
 %config(noreplace) %{_sysconfdir}/sudoers.d/50-tw-safe-update
 
 %changelog
+* Sat Jul 04 2026 Beary-Handsome <michael.abballe@gmail.com> - 1.1.1-0
+- New application icon: the openSUSE chameleon inside the update ring
+  (adapted from line art by Roberto Tamburrino, CC-BY-SA 4.0).
 * Sat Jul 04 2026 Beary-Handsome <michael.abballe@gmail.com> - 1.1.0-0
 - Guided first-run setup: the checker diagnoses exactly why the passwordless
   check is unavailable (group missing, relogin pending, sudoers inactive,

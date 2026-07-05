@@ -1,11 +1,32 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- TW Update Assistant application icon: refresh ring + check on openSUSE green -->
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <rect x="4" y="4" width="120" height="120" rx="26" fill="#73ba25"/>
-  <rect x="4" y="4" width="120" height="60" rx="26" fill="#ffffff" opacity="0.06"/>
-  <path d="M64 22a42 42 0 1 0 42 42" fill="none" stroke="#ffffff"
-        stroke-width="12" stroke-linecap="round"/>
-  <path d="M92 66h28l-14-24z" fill="#ffffff"/>
-  <path d="M46 66l13 13 24-26" fill="none" stroke="#ffffff"
-        stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+<!--
+  TW Update Assistant application icon.
+
+  The chameleon-head line art is adapted from "opensuse loghi" by
+  Roberto Tamburrino (CC-BY-SA 4.0): recolored, rescaled, and composed
+  with an update ring for this project. This icon is therefore licensed
+  CC-BY-SA 4.0. openSUSE and the Geeko are trademarks of SUSE LLC;
+  this is a community project, not endorsed by openSUSE.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+  <rect x="5" y="5" width="150" height="150" rx="32" fill="#73ba25"/>
+
+  <!-- update ring, counter-clockwise, arrowhead rising into the gap -->
+  <path d="M80 27.5a52.5 52.5 0 1 0 52.5 52.5" fill="none" stroke="#ffffff"
+        stroke-width="13" stroke-linecap="round"/>
+  <path d="M115 83h35L132.5 53z" fill="#ffffff"/>
+
+  <!-- geeko head (derived; original transform stack kept, one copy only) -->
+  <g transform="translate(80,80) scale(0.48) translate(-80,-80)">
+    <g transform="translate(-441.09731,-1.0972907)">
+      <g transform="matrix(2.426,0,0,2.4258103,-654.29593,-19.065444)"
+         fill="none" stroke="#ffffff" stroke-width="3.8"
+         stroke-linecap="round" stroke-linejoin="round">
+        <path d="m 459.43065,27.956027 c 0,0 1.88115,-6.3091 4.87343,-8.72062 0.34698,8.73663 11.48102,5.67335 8.93415,-2.16085 15.40527,-1.15318 27.44191,5.8355 31.61378,14.34007 6.03681,8.21245 4.25829,17.92849 4.68825,22.60205 -10.46313,6.96073 -19.48193,0.42298 -23.40887,-6.21798 0.043,6.65547 7.09455,15.61642 17.55665,12.80172 -5.8956,3.65622 -12.858,5.44219 -19.48136,4.95114"/>
+        <circle cx="495.18384" cy="37.282753" r="10.698378"/>
+        <path d="m 495.17798,37.509634 c -0.0739,0.716764 -6.9964,3.436097 -7.06842,-0.456468 -0.0746,-4.033717 7.15298,-0.363671 7.06842,0.456468 z"/>
+        <path d="m 495.21816,37.314398 c 0.0739,0.716765 6.9964,3.436097 7.06842,-0.456468 0.0746,-4.033717 -7.15298,-0.363671 -7.06842,0.456468 z"/>
+      </g>
+    </g>
+  </g>
 </svg>

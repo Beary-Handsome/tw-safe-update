@@ -137,3 +137,8 @@ If you built from source, run `./uninstall.sh` from the checkout instead.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+The application icon is adapted from the “opensuse loghi” chameleon line art
+by Roberto Tamburrino ([CC-BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/));
+the icon is therefore CC-BY-SA 4.0. openSUSE® and the Geeko logo are trademarks
+of SUSE LLC — this is a community project, not endorsed by openSUSE.

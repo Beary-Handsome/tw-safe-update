@@ -4,7 +4,7 @@ OBS builds RPMs for openSUSE (and others) from a spec + source. You need an
 account on <https://build.opensuse.org> and the `osc` CLI:
 
 ```bash
-sudo zypper install osc
+sudo zypper install --no-recommends osc   # --no-recommends skips the local-build/QEMU stack
 ```
 
 `osc` uses your OBS credentials (`~/.config/osc/oscrc` is created on first use).
@@ -30,18 +30,18 @@ makes OBS pull from GitHub automatically.
 
    ```bash
    cp ~/tw-safe-update/packaging/tw-safe-update.spec .
-   cp ~/rpmbuild/SOURCES/tw-safe-update-1.0.0.tar.gz .
+   cp ~/rpmbuild/SOURCES/tw-safe-update-1.1.1.tar.gz .
    ```
 
    (Re-create the tarball any time with:
-   `git -C ~/tw-safe-update archive --prefix=tw-safe-update-1.0.0/ \
-   -o ~/rpmbuild/SOURCES/tw-safe-update-1.0.0.tar.gz HEAD`)
+   `git -C ~/tw-safe-update archive --prefix=tw-safe-update-1.1.1/ \
+   -o ~/rpmbuild/SOURCES/tw-safe-update-1.1.1.tar.gz v1.1.1`)
 
 3. Add and commit — this triggers a build:
 
    ```bash
-   osc add tw-safe-update.spec tw-safe-update-1.0.0.tar.gz
-   osc commit -m "tw-safe-update 1.0.0"
+   osc add tw-safe-update.spec tw-safe-update-1.1.1.tar.gz
+   osc commit -m "tw-safe-update 1.1.1"
    ```
 
 4. Add build targets (repositories) in the web UI (e.g. `openSUSE_Tumbleweed`),

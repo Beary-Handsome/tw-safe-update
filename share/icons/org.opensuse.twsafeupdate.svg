@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- TW Update Assistant application icon: refresh ring + check on openSUSE green -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="#73ba25"/>
+  <rect x="4" y="4" width="120" height="60" rx="26" fill="#ffffff" opacity="0.06"/>
+  <path d="M64 22a42 42 0 1 0 42 42" fill="none" stroke="#ffffff"
+        stroke-width="12" stroke-linecap="round"/>
+  <path d="M92 66h28l-14-24z" fill="#ffffff"/>
+  <path d="M46 66l13 13 24-26" fill="none" stroke="#ffffff"
+        stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

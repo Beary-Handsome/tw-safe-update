@@ -7,7 +7,7 @@
 #
 
 Name:           tw-safe-update
-Version:        1.0.6
+Version:        1.1.0
 Release:        0
 Summary:        Tells you when it is safe to run a Tumbleweed "zypper dup"
 License:        MIT
@@ -21,6 +21,9 @@ BuildRequires:  cmake(Qt6Widgets)
 BuildRequires:  cmake(Qt6DBus)
 BuildRequires:  cmake(KF6StatusNotifierItem)
 BuildRequires:  cmake(KF6Parts)
+# for %%check: the offline test suite and desktop-file validation
+BuildRequires:  python3-base
+BuildRequires:  desktop-file-utils
 %{?systemd_ordering}
 
 # Runtime pieces the tool shells out to / embeds.
@@ -70,6 +73,15 @@ done
 install -Dm0644 share/org.opensuse.twsafeupdate.desktop \
     %{buildroot}%{_datadir}/applications/org.opensuse.twsafeupdate.desktop
 
+# application icon, AppStream metadata, man pages
+install -Dm0644 share/icons/org.opensuse.twsafeupdate.svg \
+    %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/org.opensuse.twsafeupdate.svg
+install -Dm0644 share/org.opensuse.twsafeupdate.metainfo.xml \
+    %{buildroot}%{_datadir}/metainfo/org.opensuse.twsafeupdate.metainfo.xml
+for m in man/*.1; do
+    install -Dm0644 "$m" "%{buildroot}%{_mandir}/man1/$(basename "$m")"
+done
+
 # group-scoped read-only sudoers rule (system package can't know the username)
 install -d -m0750 %{buildroot}%{_sysconfdir}/sudoers.d
 cat > %{buildroot}%{_sysconfdir}/sudoers.d/50-tw-safe-update <<'EOF'
@@ -83,6 +95,10 @@ cat > %{buildroot}%{_sysconfdir}/sudoers.d/50-tw-safe-update <<'EOF'
 %twsafeupdate ALL=(root) NOPASSWD: /usr/bin/zypper --non-interactive --no-refresh dist-upgrade --dry-run
 EOF
 chmod 0440 %{buildroot}%{_sysconfdir}/sudoers.d/50-tw-safe-update
+
+%check
+bash tests/run-tests.sh
+desktop-file-validate %{buildroot}%{_datadir}/applications/org.opensuse.twsafeupdate.desktop
 
 %pre
 # The read-only sudoers rule is granted to this group; users opt in with
@@ -113,9 +129,25 @@ getent group twsafeupdate >/dev/null || groupadd -r twsafeupdate || :
 %{_userunitdir}/tw-safe-update.timer
 %{_userunitdir}/tw-safe-update-tray.service
 %{_datadir}/applications/org.opensuse.twsafeupdate.desktop
+%{_datadir}/icons/hicolor/scalable/apps/org.opensuse.twsafeupdate.svg
+%{_datadir}/metainfo/org.opensuse.twsafeupdate.metainfo.xml
+%{_mandir}/man1/twsu-check.1%{?ext_man}
+%{_mandir}/man1/twsu-update.1%{?ext_man}
+%{_mandir}/man1/twsu-details.1%{?ext_man}
+%{_mandir}/man1/twsu-tray.1%{?ext_man}
 %config(noreplace) %{_sysconfdir}/sudoers.d/50-tw-safe-update
 
 %changelog
+* Sat Jul 04 2026 Beary-Handsome <michael.abballe@gmail.com> - 1.1.0-0
+- Guided first-run setup: the checker diagnoses exactly why the passwordless
+  check is unavailable (group missing, relogin pending, sudoers inactive,
+  source install) and the window offers a one-click "Finish setup".
+- Single-runner lock: timer and manual checks can no longer overlap; status
+  writes are atomic; test runs no longer touch the live status.
+- Ship an application icon, AppStream metadata, and man pages; run the test
+  suite and desktop-file validation at build time.
+- Consistent "TW Update Assistant" naming across window, CLI, and menus.
+
 * Sat Jul 04 2026 Beary-Handsome <michael.abballe@gmail.com> - 1.0.6-0
 - Details now lists every package/flatpak that would change (twsu-check --list).
 * Fri Jul 03 2026 Beary-Handsome <michael.abballe@gmail.com> - 1.0.5-0

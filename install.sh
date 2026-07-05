@@ -83,13 +83,21 @@ show=safe
 EOF
 fi
 
-# 3b. launcher entry ---------------------------------------------------------
+# 3b. launcher entry, icon, metadata, man pages ------------------------------
 APPS="$HOME/.local/share/applications"
 mkdir -p "$APPS"
-sed "s#^Exec=twsu-tray#Exec=$BIN/twsu-tray#" \
+sed -e "s#^Exec=twsu-tray#Exec=$BIN/twsu-tray#" \
+    -e "s#^TryExec=twsu-tray#TryExec=$BIN/twsu-tray#" \
     "$SRC/share/org.opensuse.twsafeupdate.desktop" > "$APPS/org.opensuse.twsafeupdate.desktop"
 command -v update-desktop-database >/dev/null && update-desktop-database "$APPS" 2>/dev/null || true
-say "Launcher entry installed (search “TW Safe Update”). Launching it shows the window."
+install -Dm 0644 "$SRC/share/icons/org.opensuse.twsafeupdate.svg" \
+    "$HOME/.local/share/icons/hicolor/scalable/apps/org.opensuse.twsafeupdate.svg"
+install -Dm 0644 "$SRC/share/org.opensuse.twsafeupdate.metainfo.xml" \
+    "$HOME/.local/share/metainfo/org.opensuse.twsafeupdate.metainfo.xml"
+for m in "$SRC"/man/*.1; do
+    install -Dm 0644 "$m" "$HOME/.local/share/man/man1/$(basename "$m")"
+done
+say "Launcher entry, icon, and man pages installed (search “TW Update Assistant”)."
 
 # 4. sudoers rule (needs root) ----------------------------------------------
 say "Installing read-only sudoers rule at $SUDOERS (requires your password)"

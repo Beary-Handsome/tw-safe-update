@@ -1,0 +1,18 @@
+.TH TWSU-UPDATE 1 "July 2026" "tw-safe-update 1.1.0" "User Commands"
+.SH NAME
+twsu-update \- run the real Tumbleweed dist-upgrade interactively
+.SH SYNOPSIS
+.B twsu-update
+.SH DESCRIPTION
+Runs
+.B sudo zypper dist-upgrade
+interactively (always asks for your password; review zypper's summary before
+confirming), then re-runs
+.BR twsu-check (1)
+so the tray status reflects the new state. Launched by the tray's
+\(lqUpdate now\(rq button inside an embedded terminal, but works in any
+terminal.
+.SH SEE ALSO
+.BR twsu-check (1),
+.BR twsu-tray (1),
+.BR zypper (8)

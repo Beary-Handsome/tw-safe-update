@@ -58,13 +58,27 @@ static QString helper(const QString &name) {
     QString p = binDir() + "/" + name;
     return QFile::exists(p) ? p : name;
 }
-static QString headlineFor(const QString &v) {
+static QString headlineFor(const QString &v, const QString &setupHint = QString()) {
+    if (v == "ERROR" && !setupHint.isEmpty()) return QStringLiteral("Setup needed");
     if (v == "SAFE")       return QStringLiteral("Safe to update");
     if (v == "UP_TO_DATE") return QStringLiteral("System is up to date");
     if (v == "CAUTION")    return QStringLiteral("Update needs review");
     if (v == "UNSAFE")     return QStringLiteral("Not safe to update yet");
     if (v == "ERROR")      return QStringLiteral("Could not check");
     return QStringLiteral("Checking…");
+}
+// Themed status icon for the WINDOW header (the tray icon itself never changes).
+static QIcon verdictIcon(const QString &v, const QString &setupHint, bool checking) {
+    auto themed = [](const char *n){ return QIcon::fromTheme(QLatin1String(n),
+                       QIcon::fromTheme(QStringLiteral("system-software-update"))); };
+    if (checking)                              return themed("view-refresh");
+    if (v == "ERROR" && !setupHint.isEmpty())  return themed("configure");
+    if (v == "SAFE")       return themed("update-low");
+    if (v == "UP_TO_DATE") return themed("update-none");
+    if (v == "CAUTION")    return themed("update-medium");
+    if (v == "UNSAFE")     return themed("update-high");
+    if (v == "ERROR")      return themed("dialog-warning");
+    return themed("system-software-update");
 }
 static QString colorFor(const QString &v) {
     if (v == "SAFE" || v == "UP_TO_DATE") return "#27ae60";
@@ -108,7 +122,8 @@ public:
     Panel() : QWidget(nullptr, Qt::Window | Qt::WindowTitleHint | Qt::WindowSystemMenuHint
                               | Qt::WindowMinimizeButtonHint | Qt::WindowCloseButtonHint) {
         setWindowTitle("TW Update Assistant");
-        setWindowIcon(QIcon::fromTheme("system-software-update"));
+        setWindowIcon(QIcon::fromTheme(QStringLiteral("org.opensuse.twsafeupdate"),
+                                       QIcon::fromTheme(QStringLiteral("system-software-update"))));
         resize(420, 480);
         setMinimumSize(340, 300);
 
@@ -126,17 +141,27 @@ public:
     void runUpdate()   { recheckOnBack_ = true;  runInTerminal(helper("twsu-update"),  "Updating — enter your password when asked"); }
     void runDetails()  { recheckOnBack_ = false; runInTerminal(helper("twsu-details"), "Details"); }
     void runFlatpaks() { recheckOnBack_ = true;  runInTerminal("flatpak update", "Flatpak updates"); }
+    void runSetup() {
+        recheckOnBack_ = true;
+        runInTerminal("sudo usermod -aG twsafeupdate \"$USER\" && echo && "
+                      "echo '✔ Group added. Log out and back in once, then open "
+                      "me again and press Check now.'",
+                      "Finishing setup — enter your password");
+    }
     void showStatus() { stack_->setCurrentWidget(statusPage_); }
 
     void setStatus(const QJsonObject &o, bool checking) {
         const QString v = o.value("verdict").toString("UNKNOWN");
-        headline_->setText(checking ? "Checking…" : headlineFor(v));
+        const QString hint = o.value("setup_hint").toString();
+        headline_->setText(checking ? "Checking…" : headlineFor(v, hint));
         headline_->setStyleSheet(QString("font-size:15px;font-weight:bold;color:%1;")
-                                 .arg(checking ? QString("palette(text)") : colorFor(v)));
+                                 .arg(checking ? QString("palette(text)")
+                                      : (!hint.isEmpty() ? QString("#e6a700") : colorFor(v))));
+        headerIcon_->setPixmap(verdictIcon(v, hint, checking).pixmap(32, 32));
         // Hide the summary when it just repeats the headline (e.g. up-to-date).
         const QString summ = o.value("summary").toString();
         summary_->setText(summ);
-        summary_->setVisible(!summ.isEmpty() && summ != headlineFor(v));
+        summary_->setVisible(!summ.isEmpty() && summ != headlineFor(v, hint));
 
         const QString inst = o.value("installed_snapshot").toString();
         const QString latest = o.value("latest_snapshot").toString();
@@ -172,6 +197,13 @@ public:
             const QJsonObject p = pv.toObject();
             addBullet("unsafe", "✗ " + p.value("problem").toString());
         }
+        // First-run setup: offer to do the one actionable step right here.
+        setup_->setVisible(!checking && hint == QLatin1String("group-add"));
+        if (!checking && hint == QLatin1String("group-add"))
+            addInfo("Click “Finish setup” below — it adds your user to the "
+                    "twsafeupdate group (asks for your password), which lets the "
+                    "background check run. Afterwards, log out and back in once.");
+
         // Reassuring detail when there is nothing to do.
         if (!checking && v == "UP_TO_DATE") {
             addInfo("You are on the latest snapshot — nothing to update.");
@@ -220,9 +252,9 @@ private:
         v->setSpacing(6);
 
         auto *top = new QHBoxLayout();
-        auto *ico = new QLabel();
-        ico->setPixmap(QIcon::fromTheme("system-software-update").pixmap(32, 32));
-        top->addWidget(ico);
+        headerIcon_ = new QLabel();
+        headerIcon_->setPixmap(QIcon::fromTheme("system-software-update").pixmap(32, 32));
+        top->addWidget(headerIcon_);
         auto *tv = new QVBoxLayout();
         headline_ = new QLabel(); headline_->setStyleSheet("font-size:15px;font-weight:bold;");
         summary_ = new QLabel(); summary_->setWordWrap(true); summary_->setStyleSheet("color:palette(placeholderText);");
@@ -250,16 +282,21 @@ private:
 
         auto *btns = new QHBoxLayout();
         auto *check = new QPushButton(QIcon::fromTheme("view-refresh"), "Check now");
-        flatpak_ = new QPushButton(QIcon::fromTheme("flatpak"), "Update Flatpaks");
+        setup_ = new QPushButton(QIcon::fromTheme("configure"), "Finish setup");
+        setup_->setVisible(false);
+        flatpak_ = new QPushButton(QIcon::fromTheme(QStringLiteral("flatpak"),
+                       QIcon::fromTheme(QStringLiteral("package-x-generic"))), "Update Flatpaks");
         flatpak_->setVisible(false);
         auto *details = new QPushButton(QIcon::fromTheme("utilities-terminal"), "Details");
         update_ = new QPushButton(QIcon::fromTheme("system-software-update"), "Update now");
         connect(check,    &QPushButton::clicked, this, [this]{ emit checkRequested(); });
+        connect(setup_,   &QPushButton::clicked, this, [this]{ runSetup(); });
         connect(flatpak_, &QPushButton::clicked, this, [this]{ runFlatpaks(); });
         connect(details,  &QPushButton::clicked, this, [this]{ runDetails(); });
         connect(update_,  &QPushButton::clicked, this, [this]{ runUpdate(); });
         btns->addWidget(check); btns->addStretch();
-        btns->addWidget(flatpak_); btns->addWidget(details); btns->addWidget(update_);
+        btns->addWidget(setup_); btns->addWidget(flatpak_);
+        btns->addWidget(details); btns->addWidget(update_);
         v->addLayout(btns);
         return statusPage_;
     }
@@ -383,9 +420,10 @@ private:
     QStackedWidget *stack_;
     QWidget *statusPage_ = nullptr, *termPage_ = nullptr, *termHost_ = nullptr;
     QVBoxLayout *bodyLayout_ = nullptr, *termHostLayout_ = nullptr;
+    QLabel *headerIcon_ = nullptr;
     QLabel *headline_ = nullptr, *summary_ = nullptr, *snapshot_ = nullptr,
            *meta_ = nullptr, *termTitle_ = nullptr;
-    QPushButton *update_ = nullptr, *flatpak_ = nullptr;
+    QPushButton *update_ = nullptr, *flatpak_ = nullptr, *setup_ = nullptr;
     KParts::ReadOnlyPart *termPart_ = nullptr;
     TerminalInterface *termIface_ = nullptr;
     bool recheckOnBack_ = false;
@@ -477,6 +515,9 @@ private:
         headerAction = menu->addAction(headlineFor(verdict));
         headerAction->setEnabled(false);
         menu->addSeparator();
+        auto *open = menu->addAction(QIcon::fromTheme(QStringLiteral("window"),
+                         QIcon::fromTheme(QStringLiteral("view-restore"))), "Open TW Update Assistant");
+        connect(open, &QAction::triggered, this, [this]{ showWindow(); });
         checkAction = menu->addAction(QIcon::fromTheme("view-refresh"), "Check now");
         connect(checkAction, &QAction::triggered, this, &Tray::runCheck);
         updateAction = menu->addAction(QIcon::fromTheme("system-software-update"), "Update now…");
@@ -499,14 +540,16 @@ private:
     }
 
     void refreshUi() {
-        QString sub = checking ? QStringLiteral("checking…") : headlineFor(verdict);
+        QString sub = checking ? QStringLiteral("checking…") : headlineFor(verdict, setupHint);
         if (!summary.isEmpty()) sub += "\n" + summary;
         sni->setToolTip(cfg.icon, "TW Update Assistant", sub);
 
-        bool visible = (cfg.show == "always") || (verdict == "SAFE");
+        // Shown when a safe update is ready — and during first-run setup, so a
+        // fresh install is discoverable instead of silently hidden.
+        bool visible = (cfg.show == "always") || (verdict == "SAFE") || !setupHint.isEmpty();
         sni->setStatus(visible ? KStatusNotifierItem::Active : KStatusNotifierItem::Passive);
 
-        if (headerAction) headerAction->setText(checking ? "Checking…" : headlineFor(verdict));
+        if (headerAction) headerAction->setText(checking ? "Checking…" : headlineFor(verdict, setupHint));
         if (checkAction)  checkAction->setEnabled(!checking);
         if (updateAction) updateAction->setEnabled(verdict != "UP_TO_DATE" && verdict != "ERROR" && !checking);
         panel->setStatus(lastStatus, checking);
@@ -521,6 +564,7 @@ private:
                 verdict = o.value("verdict").toString("UNKNOWN");
                 summary = o.value("summary").toString();
                 statusHash = o.value("status_hash").toString();
+                setupHint = o.value("setup_hint").toString();
                 collisions = o.value("collisions").toArray();
             }
         }
@@ -604,7 +648,7 @@ private:
     QAction *headerAction = nullptr, *checkAction = nullptr, *updateAction = nullptr;
     bool checking = false;
     uint lastNotifId = 0;
-    QString verdict = "UNKNOWN", summary, statusHash;
+    QString verdict = "UNKNOWN", summary, statusHash, setupHint;
     QJsonObject lastStatus;
     QJsonArray collisions;
 };

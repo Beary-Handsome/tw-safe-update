@@ -1,0 +1,69 @@
+.TH TWSU-CHECK 1 "July 2026" "tw-safe-update 1.1.0" "User Commands"
+.SH NAME
+twsu-check \- analyze whether an openSUSE Tumbleweed dist-upgrade is safe
+.SH SYNOPSIS
+.B twsu-check
+[\fB\-\-pretty\fR] [\fB\-\-list\fR] [\fB\-\-cached\fR] [\fB\-\-no\-refresh\fR] [\fB\-\-offline\fR]
+.SH DESCRIPTION
+.B twsu-check
+refreshes repository metadata and runs
+.B zypper dist-upgrade --dry-run
+(both read-only, passwordless via a narrow sudoers rule granted to the
+.B twsafeupdate
+group), then classifies the proposed transaction:
+.TP
+.B SAFE
+Clean resolution: no dependency problems, no vendor changes, no downgrades,
+no removals, nothing held back.
+.TP
+.B UP_TO_DATE
+Nothing to do.
+.TP
+.B CAUTION
+Resolvable, but review recommended (held-back packages, downgrades,
+non-critical removals, a same-project vendor adoption).
+.TP
+.B UNSAFE
+Dependency problems, packages leaving the Packman vendor (codec loss),
+critical package removals, or a package-name collision: an installed
+third-party package and an unrelated repository package that share a name,
+detected by comparing upstream URLs.
+.PP
+The result is written as JSON to
+.I ~/.cache/tw-safe-update/status.json
+for the tray application, or printed for humans with
+.BR \-\-pretty .
+Pending Flatpak updates are reported as well (informational; they do not
+affect the verdict). Only one check runs at a time; a second invocation
+prints the last result.
+.SH OPTIONS
+.TP
+.B \-\-pretty
+Human-readable report instead of JSON.
+.TP
+.B \-\-list
+With \fB\-\-pretty\fR, also list every package and Flatpak that would change.
+.TP
+.B \-\-cached
+Print the last saved result without re-checking.
+.TP
+.B \-\-no\-refresh
+Skip the repository metadata refresh.
+.TP
+.B \-\-offline
+Skip the online extras (latest-snapshot lookup, Packman lag, Flatpak list).
+.SH FILES
+.TP
+.I ~/.cache/tw-safe-update/status.json
+Last verdict, consumed by \fBtwsu-tray\fR(1).
+.TP
+.I ~/.cache/tw-safe-update/last-dup-output.txt
+Raw dry-run output, for debugging.
+.TP
+.I /etc/sudoers.d/50-tw-safe-update
+The read-only NOPASSWD rule (group \fBtwsafeupdate\fR).
+.SH SEE ALSO
+.BR twsu-update (1),
+.BR twsu-details (1),
+.BR twsu-tray (1),
+.BR zypper (8)

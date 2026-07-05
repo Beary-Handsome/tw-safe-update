@@ -1,0 +1,14 @@
+.TH TWSU-DETAILS 1 "July 2026" "tw-safe-update 1.1.0" "User Commands"
+.SH NAME
+twsu-details \- show the last update verdict with the full change list
+.SH SYNOPSIS
+.B twsu-details
+.SH DESCRIPTION
+Prints the last saved verdict from
+.BR twsu-check (1)
+including every package and Flatpak that would change (equivalent to
+.B twsu-check --pretty --cached --list
+), then waits for Enter. Launched by the tray's \(lqDetails\(rq button.
+.SH SEE ALSO
+.BR twsu-check (1),
+.BR twsu-tray (1)

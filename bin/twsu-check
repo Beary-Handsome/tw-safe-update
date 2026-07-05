@@ -21,18 +21,22 @@ Exit code is 0 whenever a verdict was produced (even UNSAFE/ERROR).
 
 import argparse
 import configparser
+import fcntl
 import glob
+import grp
 import hashlib
 import json
 import os
+import pwd
 import re
 import subprocess
 import sys
 import time
 import urllib.request
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 ZYPPER = "/usr/bin/zypper"
+SUDOERS_GROUP = "twsafeupdate"   # granted the two read-only commands (RPM install)
 # These argv lists MUST match /etc/sudoers.d/50-tw-safe-update exactly.
 REFRESH_CMD = ["sudo", "-n", ZYPPER, "--non-interactive", "refresh"]
 DUP_CMD = ["sudo", "-n", ZYPPER, "--non-interactive", "--no-refresh",
@@ -41,6 +45,7 @@ DUP_CMD = ["sudo", "-n", ZYPPER, "--non-interactive", "--no-refresh",
 CACHE_DIR = os.path.expanduser("~/.cache/tw-safe-update")
 STATUS_FILE = os.path.join(CACHE_DIR, "status.json")
 RAW_FILE = os.path.join(CACHE_DIR, "last-dup-output.txt")
+LOCK_FILE = os.path.join(CACHE_DIR, "check.lock")
 
 MEDIA_URL = "https://download.opensuse.org/tumbleweed/repo/oss/media.1/media"
 
@@ -428,6 +433,41 @@ def sudo_denied(rc, stderr):
                         or "askpass" in stderr)
 
 
+def setup_guidance():
+    """Explain WHY the passwordless check is denied, with the one right fix.
+
+    Distinguishes the four real-world failure modes instead of guessing:
+      group-add       RPM install, user not in the twsafeupdate group yet
+      relogin         user added to the group, session hasn't picked it up
+      sudoers-missing group is fine, the sudoers drop-in itself is inactive
+      source-install  no group at all -> source checkout, per-user rule missing
+    Returns (hint, human_text).
+    """
+    user = pwd.getpwuid(os.getuid()).pw_name
+    try:
+        g = grp.getgrnam(SUDOERS_GROUP)
+    except KeyError:
+        return ("source-install",
+                "Passwordless rule missing. This looks like a source install — "
+                "run ./install.sh from the checkout (or install the RPM package).")
+    member = user in g.gr_mem or os.getgid() == g.gr_gid
+    active = g.gr_gid in os.getgroups()
+    if not member:
+        return ("group-add",
+                "One-time setup: add yourself to the '%s' group so the read-only "
+                "background check can run — sudo usermod -aG %s %s — then log "
+                "out and back in." % (SUDOERS_GROUP, SUDOERS_GROUP, user))
+    if not active:
+        return ("relogin",
+                "You are in the '%s' group, but this session started before you "
+                "were added. Log out and back in, then check again."
+                % SUDOERS_GROUP)
+    return ("sudoers-missing",
+            "Your group membership is fine, but the sudoers rule is not active. "
+            "Check for /etc/sudoers.d/50-tw-safe-update.rpmnew (move it into "
+            "place) or reinstall the tw-safe-update package.")
+
+
 def fetch(url, timeout=10):
     req = urllib.request.Request(url, headers={"User-Agent": "tw-safe-update/" + VERSION})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -534,6 +574,8 @@ def build_status(verdict, reasons, parsed=None, extra=None, collisions=None):
         "ERROR": "Could not check for updates",
     }
     st["summary"] = top.get(verdict, verdict)
+    if st.get("setup_hint"):
+        st["summary"] = "Setup needed to enable update checks"
     h = hashlib.sha1(json.dumps(
         [verdict, st.get("latest_snapshot"), counts, len(st["problems"]),
          sorted((c["name"], c.get("risk")) for c in st["collisions"])],
@@ -562,7 +604,7 @@ def print_pretty(st, full=False):
     c = VERDICT_COLOR.get(st["verdict"], "")
     r = "\033[0m"
     b = "\033[1m"
-    print("%s%s══ TW Safe Update ══%s" % (b, c, r))
+    print("%s%s══ TW Update Assistant ══%s" % (b, c, r))
     print("%s%s%s — %s" % (c + b, st["verdict"], r, st["summary"]))
     if st.get("installed_snapshot"):
         line = "Snapshot: %s installed" % st["installed_snapshot"]
@@ -647,9 +689,34 @@ def main():
             print()
         return
 
+    # Single-runner lock: the systemd timer and a manual "Check now" must not
+    # run two zypper sessions at once. If another check is already running,
+    # show the last saved result — the running check will refresh it shortly.
+    lock = None
+    if not args.parse_file:
+        try:
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            lock = open(LOCK_FILE, "w")
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("note: another check is already running; showing the last "
+                  "result.", file=sys.stderr)
+            try:
+                with open(STATUS_FILE) as f:
+                    st = json.load(f)
+            except (OSError, ValueError):
+                st = build_status("ERROR", [{"severity": "info", "text":
+                                  "A check is running — try again shortly."}],
+                                  None, {"installed_snapshot": installed_snapshot()})
+            print_pretty(st, full=args.list) if args.pretty \
+                else (json.dump(st, sys.stdout, indent=1), print())
+            return
+        except OSError:
+            lock = None   # cache dir unusable; proceed unlocked rather than fail
+
     extra = {"installed_snapshot": installed_snapshot(),
              "latest_snapshot": None, "refresh_ok": None,
-             "packman_lag_days": None}
+             "packman_lag_days": None, "setup_hint": ""}
 
     refresh_note = None
     parsed = None
@@ -665,9 +732,8 @@ def main():
             extra["refresh_ok"] = rc == 0
             if sudo_denied(rc, err):
                 verdict = "ERROR"
-                reasons = [{"severity": "unsafe", "text":
-                            "Passwordless sudo rule missing — run install.sh "
-                            "to allow the read-only refresh/dry-run commands."}]
+                extra["setup_hint"], text = setup_guidance()
+                reasons = [{"severity": "unsafe", "text": text}]
             elif rc == 7:
                 verdict = "ERROR"
                 reasons = [{"severity": "info", "text":
@@ -689,9 +755,8 @@ def main():
                 pass
             if sudo_denied(rc, err):
                 verdict = "ERROR"
-                reasons = [{"severity": "unsafe", "text":
-                            "Passwordless sudo rule missing — run install.sh "
-                            "to allow the read-only refresh/dry-run commands."}]
+                extra["setup_hint"], text = setup_guidance()
+                reasons = [{"severity": "unsafe", "text": text}]
             elif rc == 7:
                 verdict = "ERROR"
                 reasons = [{"severity": "info", "text":
@@ -739,12 +804,17 @@ def main():
     if verdict == "ERROR" and any("busy" in r["text"] for r in reasons):
         st["retryable"] = True
 
-    try:
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        with open(STATUS_FILE, "w") as f:
-            json.dump(st, f, indent=1)
-    except OSError:
-        pass
+    # Persist for the tray — but never from --parse-file (test/replay) runs,
+    # which would overwrite the real system status with fixture data.
+    if not args.parse_file:
+        try:
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            tmp = STATUS_FILE + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(st, f, indent=1)
+            os.replace(tmp, STATUS_FILE)   # atomic: the tray never reads a half-written file
+        except OSError:
+            pass
 
     if args.pretty:
         print_pretty(st, full=args.list)

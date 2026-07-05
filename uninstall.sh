@@ -21,9 +21,12 @@ say "Removing the old plasmoid, if present"
 command -v kpackagetool6 >/dev/null && \
     kpackagetool6 --type Plasma/Applet --remove org.opensuse.twsafeupdate >/dev/null 2>&1 || true
 
-say "Removing scripts, tray binary, launcher entry and notification config"
+say "Removing scripts, tray binary, launcher entry, icon, metadata and man pages"
 rm -f "$BIN/twsu-check" "$BIN/twsu-update" "$BIN/twsu-details" "$BIN/twsu-tray"
 rm -f "$HOME/.local/share/applications/org.opensuse.twsafeupdate.desktop"
+rm -f "$HOME/.local/share/icons/hicolor/scalable/apps/org.opensuse.twsafeupdate.svg"
+rm -f "$HOME/.local/share/metainfo/org.opensuse.twsafeupdate.metainfo.xml"
+rm -f "$HOME/.local/share/man/man1"/twsu-{check,update,details,tray}.1
 rm -f "$HOME/.local/share/knotifications6/twsafeupdate.notifyrc"
 command -v update-desktop-database >/dev/null && \
     update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true

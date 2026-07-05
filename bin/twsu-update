@@ -11,7 +11,7 @@ CHECK="$(dirname "$0")/twsu-check"
 
 BOLD=$'\e[1m'; GREEN=$'\e[32m'; RED=$'\e[31m'; RESET=$'\e[0m'
 
-echo "${BOLD}════ TW Safe Update — distribution upgrade ════${RESET}"
+echo "${BOLD}════ TW Update Assistant — distribution upgrade ════${RESET}"
 echo "Running the real ${BOLD}zypper dist-upgrade${RESET} now."
 echo "You will be asked for your password — review the summary before confirming."
 echo

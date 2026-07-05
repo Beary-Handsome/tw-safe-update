@@ -1,0 +1,36 @@
+.TH TWSU-TRAY 1 "July 2026" "tw-safe-update 1.1.0" "User Commands"
+.SH NAME
+twsu-tray \- TW Update Assistant system-tray service
+.SH SYNOPSIS
+.B twsu-tray
+.SH DESCRIPTION
+Background tray service (KDE StatusNotifierItem). By default the icon appears
+only when a safe update is ready; left-click opens the status window,
+right-click a quick menu. \(lqUpdate now\(rq and \(lqDetails\(rq run in a
+Konsole terminal embedded in the window. Single-instance: launching it again
+raises the window of the running service.
+.PP
+Normally started by the systemd user service
+.BR tw-safe-update-tray.service ;
+background checks are scheduled by
+.BR tw-safe-update.timer .
+.SH CONFIGURATION
+.I ~/.config/tw-safe-update/tray.conf
+.RS
+.TP
+.B show=safe\fR|\fBalways
+When the tray icon is visible (default \fBsafe\fR).
+.TP
+.B notify=safe\fR|\fBreview\fR|\fBany
+Which verdicts raise a desktop notification.
+.TP
+.B icon=\fINAME\fR
+Freedesktop icon name for the tray (default \fBsoftware-update-available\fR).
+.TP
+.B terminal=\fICMD\fR
+Fallback terminal when the embedded Konsole part is unavailable.
+.RE
+.SH SEE ALSO
+.BR twsu-check (1),
+.BR twsu-update (1),
+.BR twsu-details (1)

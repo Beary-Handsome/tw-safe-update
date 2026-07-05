@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.opensuse.twsafeupdate</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>TW Update Assistant</name>
+  <summary>Know when it is safe to run a Tumbleweed zypper dup</summary>
+  <description>
+    <p>
+      TW Update Assistant watches openSUSE Tumbleweed in the background and
+      tells you when a distribution upgrade is safe. It runs the package
+      manager's own dry run, then classifies the result: a green light means
+      the transaction resolves cleanly — no dependency conflicts, nothing
+      removed, downgraded or held back, no codecs leaving Packman, and no
+      package-name collisions that would swap an installed program for an
+      unrelated one.
+    </p>
+    <p>
+      The tray icon only appears when a safe update is ready. The update itself
+      runs in a terminal embedded in the app window and always asks for your
+      password; the background checks are read-only. Pending Flatpak updates
+      are shown as well.
+    </p>
+  </description>
+  <launchable type="desktop-id">org.opensuse.twsafeupdate.desktop</launchable>
+  <url type="homepage">https://github.com/Beary-Handsome/tw-safe-update</url>
+  <url type="bugtracker">https://github.com/Beary-Handsome/tw-safe-update/issues</url>
+  <developer id="io.github.beary-handsome">
+    <name>Beary-Handsome</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>twsu-check</binary>
+    <binary>twsu-tray</binary>
+  </provides>
+  <categories>
+    <category>System</category>
+    <category>PackageManager</category>
+  </categories>
+  <releases>
+    <release version="1.1.0" date="2026-07-04"/>
+    <release version="1.0.6" date="2026-07-04"/>
+    <release version="1.0.0" date="2026-07-02"/>
+  </releases>
+</component>

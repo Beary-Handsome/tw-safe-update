@@ -20,6 +20,7 @@ jobs:
           zypper --non-interactive --gpg-auto-import-keys refresh
           zypper --non-interactive install --no-recommends \
             git tar gzip rpm-build gpg2 cmake gcc-c++ extra-cmake-modules \
+            python3-base desktop-file-utils \
             "cmake(Qt6Widgets)" "cmake(Qt6DBus)" \
             "cmake(KF6StatusNotifierItem)" "cmake(KF6Parts)"
 

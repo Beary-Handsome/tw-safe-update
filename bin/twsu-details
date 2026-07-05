@@ -5,7 +5,7 @@ set -u
 CHECK="$(dirname "$0")/twsu-check"
 [ -x "$CHECK" ] || CHECK="twsu-check"
 
-"$CHECK" --pretty --cached
+"$CHECK" --pretty --cached --list
 echo
 echo "Tip: run '$CHECK --pretty' to re-check now (refreshes repos),"
 echo "     or click 'Update now' from the tray icon to install."

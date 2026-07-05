@@ -7,7 +7,7 @@
 #
 
 Name:           tw-safe-update
-Version:        1.0.5
+Version:        1.0.6
 Release:        0
 Summary:        Tells you when it is safe to run a Tumbleweed "zypper dup"
 License:        MIT
@@ -116,6 +116,8 @@ getent group twsafeupdate >/dev/null || groupadd -r twsafeupdate || :
 %config(noreplace) %{_sysconfdir}/sudoers.d/50-tw-safe-update
 
 %changelog
+* Sat Jul 04 2026 Beary-Handsome <michael.abballe@gmail.com> - 1.0.6-0
+- Details now lists every package/flatpak that would change (twsu-check --list).
 * Fri Jul 03 2026 Beary-Handsome <michael.abballe@gmail.com> - 1.0.5-0
 - Also report pending Flatpak updates, with an "Update Flatpaks" button.
 - Fix the post-update re-check path on the packaged install.

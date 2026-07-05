@@ -4,7 +4,7 @@
 Refreshes repo metadata, runs `zypper dup --dry-run` (both via a narrow
 NOPASSWD sudoers rule installed by install.sh), analyzes the proposed
 transaction for the classic Tumbleweed breakage signals, and emits a JSON
-verdict for the plasmoid (or a human report with --pretty).
+verdict for the tray (or a human report with --pretty).
 
 Verdicts:
   UP_TO_DATE  nothing to do
@@ -517,7 +517,7 @@ def build_status(verdict, reasons, parsed=None, extra=None, collisions=None):
         "verdict": verdict,
         "reasons": reasons,
         "counts": counts,
-        "packages": {k: v[:400] for k, v in sec.items()},
+        "packages": {k: v[:2000] for k, v in sec.items()},
         "problems": (parsed or {}).get("problems", []),
         "collisions": collisions or [],
         "download_size": (parsed or {}).get("download_size"),
@@ -549,7 +549,16 @@ VERDICT_COLOR = {"UP_TO_DATE": "\033[32m", "SAFE": "\033[32m",
                  "ERROR": "\033[31m"}
 
 
-def print_pretty(st):
+def _print_pkg_list(title, items):
+    if not items:
+        return
+    import textwrap
+    print("\n\033[1m%s (%d):\033[0m" % (title, len(items)))
+    print(textwrap.fill("  ".join(sorted(items)), width=100,
+                        initial_indent="  ", subsequent_indent="  "))
+
+
+def print_pretty(st, full=False):
     c = VERDICT_COLOR.get(st["verdict"], "")
     r = "\033[0m"
     b = "\033[1m"
@@ -593,6 +602,20 @@ def print_pretty(st):
         print("\033[36mFlatpak:\033[0m %d update(s) available — %s"
               % (len(fp), ", ".join(x["app"] for x in fp[:8])
                  + (" …" if len(fp) > 8 else "")))
+    if full:
+        pkgs = st.get("packages", {})
+        _print_pkg_list("Packages to upgrade", pkgs.get("upgrade"))
+        _print_pkg_list("New packages", pkgs.get("new"))
+        _print_pkg_list("Reinstall", pkgs.get("reinstall"))
+        _print_pkg_list("Downgrade", pkgs.get("downgrade"))
+        _print_pkg_list("Remove", pkgs.get("remove"))
+        if fp:
+            print("\n\033[1mFlatpak updates (%d):\033[0m" % len(fp))
+            for x in fp:
+                print("  %s  %s" % (x["app"], x.get("version", "")))
+        if not any(pkgs.get(k) for k in
+                   ("upgrade", "new", "reinstall", "downgrade", "remove")) and not fp:
+            print("\n  Nothing to update.")
     print("Checked: %s" % time.strftime("%Y-%m-%d %H:%M",
                                         time.localtime(st["timestamp"])))
 
@@ -600,6 +623,8 @@ def print_pretty(st):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--pretty", action="store_true", help="human output instead of JSON")
+    ap.add_argument("--list", action="store_true",
+                    help="with --pretty, also list every package/flatpak that would change")
     ap.add_argument("--no-refresh", action="store_true", help="skip metadata refresh")
     ap.add_argument("--offline", action="store_true", help="skip all network extras")
     ap.add_argument("--cached", action="store_true",
@@ -616,7 +641,7 @@ def main():
                               "No check has run yet. Use “Check now”."}],
                               None, {"installed_snapshot": installed_snapshot()})
         if args.pretty:
-            print_pretty(st)
+            print_pretty(st, full=args.list)
         else:
             json.dump(st, sys.stdout, indent=1)
             print()
@@ -722,7 +747,7 @@ def main():
         pass
 
     if args.pretty:
-        print_pretty(st)
+        print_pretty(st, full=args.list)
     else:
         json.dump(st, sys.stdout, indent=1)
         print()

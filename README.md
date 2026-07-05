@@ -109,7 +109,7 @@ Optional, in `~/.config/tw-safe-update/tray.conf`:
 ```
 show=safe                         # safe = only when an update is ready | always
 notify=safe                       # safe | review | any
-icon=software-update-available    # any freedesktop icon name
+icon=update-low                   # tray icon; the standard "updates ready" panel glyph
 terminal=konsole                  # fallback terminal, if the embedded one is unavailable
 ```
 

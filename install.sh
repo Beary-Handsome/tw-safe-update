@@ -75,9 +75,9 @@ terminal=konsole
 # when to raise a notification: safe | review | any
 # (name-collisions always notify once, regardless of this setting)
 notify=safe
-# tray icon name (any freedesktop icon), e.g. software-update-available,
-# system-software-update, update-notifier
-icon=software-update-available
+# tray icon name; update-low is the standard "updates ready" panel glyph.
+# alternatives: update-none, software-update-available, system-software-update
+icon=update-low
 # when the tray icon is visible: safe (only when a safe update is ready) | always
 show=safe
 EOF

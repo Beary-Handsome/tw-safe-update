@@ -141,6 +141,8 @@ getent group twsafeupdate >/dev/null || groupadd -r twsafeupdate || :
 * Sat Jul 04 2026 Beary-Handsome <michael.abballe@gmail.com> - 1.1.1-0
 - New application icon: the openSUSE chameleon inside the update ring
   (adapted from line art by Roberto Tamburrino, CC-BY-SA 4.0).
+- Tray icon defaults to update-low, the standard monochrome "updates ready"
+  panel glyph; tooltip and notifications use the new app icon.
 * Sat Jul 04 2026 Beary-Handsome <michael.abballe@gmail.com> - 1.1.0-0
 - Guided first-run setup: the checker diagnoses exactly why the passwordless
   check is unavailable (group missing, relogin pending, sudoers inactive,

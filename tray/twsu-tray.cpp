@@ -96,7 +96,9 @@ static QString sevColor(const QString &s) {
 struct Config {
     QString terminal = "konsole";
     QString notify = "safe"; // safe | review | any
-    QString icon = "software-update-available"; // freedesktop tray-update icon
+    // Panel status icon (monochrome, recolored by the panel theme): the classic
+    // circular-arrows-with-dot that KDE's own notifier uses for "updates ready".
+    QString icon = "update-low";
     QString show = "safe";   // safe | always : when the tray icon is visible
     void load() {
         QFile f(home() + "/.config/tw-safe-update/tray.conf");
@@ -542,7 +544,8 @@ private:
     void refreshUi() {
         QString sub = checking ? QStringLiteral("checking…") : headlineFor(verdict, setupHint);
         if (!summary.isEmpty()) sub += "\n" + summary;
-        sni->setToolTip(cfg.icon, "TW Update Assistant", sub);
+        // Tooltip shows the app identity; the panel icon itself stays symbolic.
+        sni->setToolTip(QStringLiteral("org.opensuse.twsafeupdate"), "TW Update Assistant", sub);
 
         // Shown when a safe update is ready — and during first-run setup, so a
         // fresh install is discoverable instead of silently hidden.
@@ -630,7 +633,7 @@ private:
         QVariantMap hints; hints["urgency"] = QVariant::fromValue<uchar>(warning ? 2 : 1);
         QVariantList args;
         args << QStringLiteral("TW Update Assistant") << lastNotifId
-             << cfg.icon << title << body
+             << QStringLiteral("org.opensuse.twsafeupdate") << title << body
              << actions << hints << int(warning ? 0 : 12000);
         QDBusReply<uint> r = notifIface_->callWithArgumentList(QDBus::Block, "Notify", args);
         if (r.isValid()) { lastNotifId = r.value(); return true; }
